@@ -4,6 +4,12 @@
 
 Built with React Native and Expo, this app connects to your self-hosted GoatCitadel gateway to provide real-time AI command and control on the go, without sacrificing the premium "Signal Noir" aesthetics of the desktop surface.
 
+<p align="center">
+  <img src="assets/readme/summit.png" width="30%" alt="Summit Dashboard" />
+  <img src="assets/readme/chat.png" width="30%" alt="Chat Interface" />
+  <img src="assets/readme/settings.png" width="30%" alt="Settings Configurations" />
+</p>
+
 ## 🚀 Features
 
 - **Command Deck:** Real-time system vitals, agent heartbeat, and unread notifications at a glance.
