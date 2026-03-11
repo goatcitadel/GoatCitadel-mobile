@@ -29,6 +29,10 @@ export function setAuthToken(token: string | undefined) {
     authToken = token;
 }
 
+export function getAuthToken() {
+    return authToken;
+}
+
 export function getGatewayUrl() {
     return gatewayBaseUrl;
 }

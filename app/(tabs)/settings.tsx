@@ -12,7 +12,8 @@ import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../src/components/u
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { fetchRuntimeSettings, checkGatewayHealth, patchSettings } from '../../src/api/client';
-import { setGatewayUrl, getGatewayUrl } from '../../src/api/client';
+import { setGatewayUrl, getGatewayUrl, setAuthToken, getAuthToken } from '../../src/api/client';
+import { setSecureItem } from '../../src/utils/storage';
 import type { RuntimeSettings } from '../../src/api/types';
 import { useToast } from '../../src/context/ToastContext';
 
@@ -23,6 +24,7 @@ export default function SettingsScreen() {
     const router = useRouter();
     const { showToast } = useToast();
     const [gwUrl, setGwUrl] = useState(getGatewayUrl());
+    const [token, setToken] = useState(getAuthToken() || '');
     const [gwStatus, setGwStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
     const [saving, setSaving] = useState(false);
 
@@ -32,13 +34,16 @@ export default function SettingsScreen() {
 
     const testConnection = async () => {
         setGatewayUrl(gwUrl);
+        setAuthToken(token);
         const ok = await checkGatewayHealth();
         setGwStatus(ok ? 'online' : 'offline');
         if (ok) {
+            await setSecureItem('gc_gateway_url', gwUrl);
+            await setSecureItem('gc_auth_token', token);
             showToast({ message: `Connected to ${gwUrl}`, type: 'success' });
             settings.refresh();
         } else {
-            Alert.alert('Unreachable', `Could not reach ${gwUrl}. Check network/firewall.`);
+            Alert.alert('Unreachable', `Could not reach ${gwUrl}. Check network/firewall or your Auth Token.`);
         }
     };
 
@@ -96,7 +101,7 @@ export default function SettingsScreen() {
 
                 {/* Gateway Connection */}
                 <GCCard style={s.section}>
-                    <Text style={s.sectionTitle}>GATEWAY CONNECTION</Text>
+                    <Text style={s.sectionTitle}>GATEWAY URL</Text>
                     <View style={s.inputRow}>
                         <TextInput style={s.input} value={gwUrl} onChangeText={setGwUrl}
                             placeholder="http://127.0.0.1:8787" placeholderTextColor={colors.textDim}
@@ -105,7 +110,15 @@ export default function SettingsScreen() {
                             {gwStatus.toUpperCase()}
                         </GCStatusChip>
                     </View>
-                    <GCButton title="Test Connection" onPress={testConnection} variant="primary" size="md" />
+                    
+                    <Text style={[s.sectionTitle, { marginTop: spacing.sm }]}>AUTH TOKEN</Text>
+                    <View style={s.inputRow}>
+                        <TextInput style={s.input} value={token} onChangeText={setToken}
+                            placeholder="Bearer token (optional)" placeholderTextColor={colors.textDim}
+                            secureTextEntry autoCapitalize="none" autoCorrect={false} />
+                    </View>
+                    
+                    <GCButton title="Save & Test Connection" onPress={testConnection} variant="primary" size="md" />
                 </GCCard>
 
                 {/* Tool Profile */}
