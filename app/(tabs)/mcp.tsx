@@ -62,7 +62,7 @@ export default function McpScreen() {
                         <View style={s.rowContent}>
                             <Text style={s.rowLabel}>{item.label}</Text>
                             <Text style={s.rowTransport}>
-                                {item.transport} · {item.toolCount} tools
+                                {item.transport} · {item.authType} auth
                                 {item.trustTier ? ` · ${item.trustTier}` : ''}
                                 {item.category ? ` · ${item.category}` : ''}
                             </Text>

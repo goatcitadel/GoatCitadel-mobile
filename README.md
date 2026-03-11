@@ -43,12 +43,18 @@ A pre-built APK is included in the root of this repository for immediate sideloa
    cd GoatCitadel-mobile
    ```
 
-2. Install dependencies:
+2. Authenticate to GitHub Packages once for the shared contracts package:
+   ```bash
+   npm login --scope=@goatcitadel --registry=https://npm.pkg.github.com
+   ```
+   Use a GitHub Personal Access Token with `read:packages` when npm prompts for your password.
+
+3. Install dependencies:
    ```bash
    npm install
    ```
 
-3. Start the Expo development server:
+4. Start the Expo development server:
    ```bash
    npx expo start
    ```

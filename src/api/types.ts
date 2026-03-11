@@ -1,7 +1,47 @@
 /**
  * GoatCitadel Mobile — Portable contract types
- * Subset of @goatcitadel/contracts for mobile use.
+ * Shared gateway contracts are re-exported from @goatcitadel/contracts.
+ * Mobile-only request/view-model shapes stay local to this module.
  */
+
+import type {
+    AgentProfileRecord,
+    ApprovalRequest,
+    ApprovalStatus,
+    ChatSessionRecord,
+    CronJobRecord,
+    DashboardState,
+    DeviceAccessRequestCreateInput,
+    DeviceAccessRequestCreateResponse,
+    DeviceAccessRequestDeviceType,
+    DeviceAccessRequestStatus,
+    DeviceAccessRequestStatusResponse,
+    McpServerRecord,
+    RealtimeEvent,
+    SessionMeta,
+    SkillListItem,
+    SkillRuntimeState,
+    SystemVitals,
+} from '@goatcitadel/contracts';
+
+export type {
+    AgentProfileRecord,
+    ApprovalRequest,
+    ApprovalStatus,
+    ChatSessionRecord,
+    CronJobRecord,
+    DashboardState,
+    DeviceAccessRequestCreateInput,
+    DeviceAccessRequestCreateResponse,
+    DeviceAccessRequestStatus,
+    DeviceAccessRequestStatusResponse,
+    McpServerRecord,
+    RealtimeEvent,
+    SessionMeta,
+    SkillListItem,
+    SkillRuntimeState,
+    SystemVitals,
+};
 
 // ─── Chat ────────────────────────────────────────
 export type ChatMode = 'chat' | 'cowork' | 'code';
@@ -13,24 +53,6 @@ export type ChatTurnBranchKind = 'append' | 'retry' | 'edit';
 export type ChatDelegationStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 export type ChatDelegationRunStatus = 'running' | 'completed' | 'failed' | 'partial';
 export type ChatOrchestrationVisibility = 'hidden' | 'summarized' | 'expandable' | 'explicit';
-
-export interface ChatSessionRecord {
-    sessionId: string;
-    sessionKey: string;
-    workspaceId?: string;
-    scope: 'mission' | 'external';
-    title?: string;
-    pinned: boolean;
-    lifecycleStatus: 'active' | 'archived';
-    projectId?: string;
-    projectName?: string;
-    channel: string;
-    account: string;
-    updatedAt: string;
-    lastActivityAt: string;
-    tokenTotal: number;
-    costUsdTotal: number;
-}
 
 export interface ChatMessageRecord {
     messageId: string;
@@ -179,104 +201,6 @@ export type ChatStreamChunk =
     | { type: 'error'; sessionId: string; turnId?: string; error: string }
     | { type: 'done'; sessionId: string; turnId: string; messageId: string };
 
-// ─── Sessions ────────────────────────────────────
-export type SessionHealth = 'healthy' | 'degraded' | 'blocked';
-export type BudgetState = 'ok' | 'warning' | 'hard_cap';
-
-export interface SessionMeta {
-    sessionId: string;
-    sessionKey: string;
-    kind: 'dm' | 'group' | 'thread';
-    channel: string;
-    account: string;
-    displayName?: string;
-    lastActivityAt: string;
-    updatedAt: string;
-    health: SessionHealth;
-    tokenTotal: number;
-    costUsdTotal: number;
-    budgetState: BudgetState;
-}
-
-// ─── Approvals ───────────────────────────────────
-export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'edited';
-
-export interface ApprovalExplanation {
-    summary: string;
-    riskExplanation: string;
-    saferAlternative?: string;
-    generatedAt: string;
-}
-
-export interface ApprovalRequest {
-    approvalId: string;
-    kind: string;
-    riskLevel: 'safe' | 'caution' | 'danger' | 'nuclear';
-    status: ApprovalStatus;
-    payload: Record<string, unknown>;
-    preview: Record<string, unknown>;
-    createdAt: string;
-    resolvedAt?: string;
-    resolvedBy?: string;
-    resolutionNote?: string;
-    explanationStatus: 'not_requested' | 'pending' | 'completed' | 'failed';
-    explanation?: ApprovalExplanation;
-}
-
-// ─── Agents ──────────────────────────────────────
-export type AgentRuntimeStatus = 'active' | 'idle';
-
-export interface AgentProfileRecord {
-    agentId: string;
-    roleId: string;
-    name: string;
-    title: string;
-    summary: string;
-    specialties: string[];
-    status: AgentRuntimeStatus;
-    sessionCount: number;
-    activeSessions: number;
-    isBuiltin: boolean;
-}
-
-// ─── Dashboard ───────────────────────────────────
-export interface TaskStatusCount {
-    status: string;
-    count: number;
-}
-
-export interface RealtimeEvent {
-    eventId: string;
-    eventType: string;
-    source: string;
-    timestamp: string;
-    payload: Record<string, unknown>;
-}
-
-export interface DashboardState {
-    timestamp: string;
-    sessions: SessionMeta[];
-    pendingApprovals: number;
-    activeSubagents: number;
-    taskStatusCounts: TaskStatusCount[];
-    recentEvents: RealtimeEvent[];
-    dailyCostUsd: number;
-}
-
-export interface SystemVitals {
-    hostname: string;
-    platform: string;
-    release: string;
-    uptimeSeconds: number;
-    loadAverage: number[];
-    cpuCount: number;
-    memoryTotalBytes: number;
-    memoryFreeBytes: number;
-    memoryUsedBytes: number;
-    processRssBytes: number;
-    processHeapUsedBytes: number;
-}
-
 // ─── Provider / LLM ─────────────────────────────
 export interface ProviderRecord {
     providerId: string;
@@ -304,79 +228,11 @@ export interface RuntimeSettings {
 // ─── Gateway Access / Pairing ───────────────────
 export type GatewayAuthMode = 'none' | 'token' | 'basic';
 export type GatewayAccessPreflightStatus = 'ready' | 'needs-auth' | 'unreachable' | 'misconfigured';
-export type DeviceAccessRequestStatus = 'pending' | 'approved' | 'rejected' | 'expired';
-export type DeviceAccessDeviceType = 'mobile' | 'desktop' | 'tablet' | 'browser' | 'unknown';
+export type DeviceAccessDeviceType = DeviceAccessRequestDeviceType;
 
 export interface GatewayAccessPreflightResult {
     status: GatewayAccessPreflightStatus;
     message: string;
     healthDetail?: string;
     authMode?: GatewayAuthMode;
-}
-
-export interface DeviceAccessRequestCreateInput {
-    deviceLabel?: string;
-    deviceType?: DeviceAccessDeviceType;
-    platform?: string;
-}
-
-export interface DeviceAccessRequestCreateResponse {
-    requestId: string;
-    requestSecret: string;
-    approvalId: string;
-    status: DeviceAccessRequestStatus;
-    expiresAt: string;
-    pollAfterMs: number;
-    message: string;
-}
-
-export interface DeviceAccessRequestStatusResponse {
-    requestId: string;
-    approvalId: string;
-    status: DeviceAccessRequestStatus;
-    expiresAt: string;
-    resolvedAt?: string;
-    deviceToken?: string;
-    deviceTokenExpiresAt?: string;
-    message: string;
-}
-
-// ─── Skills ──────────────────────────────────────
-export type SkillRuntimeState = 'enabled' | 'sleep' | 'disabled';
-
-export interface SkillListItem {
-    skillId: string;
-    name: string;
-    description?: string;
-    source?: string;
-    state: SkillRuntimeState;
-    note?: string;
-    declaredTools?: string[];
-    requires?: string[];
-    isBuiltin: boolean;
-}
-
-// ─── MCP ─────────────────────────────────────────
-export interface McpServerRecord {
-    serverId: string;
-    label: string;
-    transport: string;
-    status: 'connected' | 'disconnected' | 'error' | 'connecting';
-    enabled: boolean;
-    category?: string;
-    trustTier?: 'trusted' | 'restricted' | 'quarantined';
-    costTier?: 'free' | 'mixed' | 'paid' | 'unknown';
-    toolCount: number;
-    lastError?: string;
-}
-
-// ─── Cron / Scheduled Jobs ──────────────────────
-export interface CronJobRecord {
-    jobId: string;
-    name: string;
-    schedule: string;
-    enabled: boolean;
-    lastRunAt?: string;
-    nextRunAt?: string;
-    updatedAt?: string;
 }

@@ -21,6 +21,22 @@ const STATE_TONE = {
     disabled: 'muted' as const,
 };
 
+function getSkillSummary(skill: SkillListItem): string | undefined {
+    if (skill.note?.trim()) {
+        return skill.note.trim();
+    }
+
+    const parts: string[] = [];
+    if (skill.declaredTools.length > 0) {
+        parts.push(`${skill.declaredTools.length} tool${skill.declaredTools.length === 1 ? '' : 's'}`);
+    }
+    if (skill.requires.length > 0) {
+        parts.push(`${skill.requires.length} requirement${skill.requires.length === 1 ? '' : 's'}`);
+    }
+
+    return parts.length > 0 ? parts.join(' · ') : undefined;
+}
+
 export default function SkillsScreen() {
     const router = useRouter();
     const { showToast } = useToast();
@@ -80,7 +96,7 @@ export default function SkillsScreen() {
                         </View>
                         <View style={s.rowContent}>
                             <Text style={s.rowName}>{item.name}</Text>
-                            {item.description ? <Text style={s.rowDesc} numberOfLines={2}>{item.description}</Text> : null}
+                            {getSkillSummary(item) ? <Text style={s.rowDesc} numberOfLines={2}>{getSkillSummary(item)}</Text> : null}
                             {item.source ? <Text style={s.rowSource}>{item.source}</Text> : null}
                         </View>
                         <View style={s.stateCol}>
