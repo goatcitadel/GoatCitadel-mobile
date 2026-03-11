@@ -50,7 +50,7 @@ export default function RootLayout() {
             <ToastProvider>
                 <NotificationProvider>
                     <QuickCommandProvider>
-                        <StatusBar barStyle="light-content" backgroundColor={colors.bgCore} translucent={false} />
+                        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent={true} />
                         {isInApp ? <ConnectionBar /> : null}
                         <Slot />
                         <QuickCommandPalette />
