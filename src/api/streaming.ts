@@ -2,7 +2,7 @@
  * GoatCitadel Mobile — SSE Streaming Client for Chat
  */
 import type { ChatStreamChunk } from './types';
-import { getGatewayUrl } from './client';
+import { getGatewayUrl, getAuthToken } from './client';
 
 export interface StreamCallbacks {
     onDelta?: (delta: string, turnId: string) => void;
@@ -45,6 +45,7 @@ export function streamChatResponse(
                     headers: {
                         'Content-Type': 'application/json',
                         Accept: 'text/event-stream',
+                        ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
                     },
                     body,
                     signal: abortController.signal,

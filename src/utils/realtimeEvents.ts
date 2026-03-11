@@ -23,14 +23,8 @@ function asString(value: unknown): string | undefined {
 }
 
 function normalizeRealtimeEventType(eventType: string): string {
-    switch (eventType) {
-        case 'approval.created':
-            return 'approval_created';
-        case 'approval.resolved':
-            return 'approval_resolved';
-        default:
-            return eventType;
-    }
+    // Gateway always emits underscored names, but normalize dotted forms defensively.
+    return eventType.replace(/\./g, '_');
 }
 
 function readDeviceSubject(payload: Record<string, unknown>): string {
@@ -121,7 +115,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 logLevel: status === 'approved' ? 'info' : 'warn',
             };
         }
-        case 'agent.started':
+        case 'subagent_registered':
             return {
                 canonicalType,
                 title: 'Agent Started',
@@ -131,17 +125,17 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 notificationType: 'agent',
                 logLevel: 'info',
             };
-        case 'agent.completed':
+        case 'subagent_updated':
             return {
                 canonicalType,
-                title: 'Agent Completed',
+                title: 'Agent Updated',
                 body: `Source: ${event.source}`,
                 icon: 'checkmark-done',
                 route: '/(tabs)/herd',
                 notificationType: 'agent',
                 logLevel: 'info',
             };
-        case 'chat.message':
+        case 'chat_message':
             return {
                 canonicalType,
                 title: 'New Chat Message',
@@ -151,41 +145,69 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 notificationType: 'chat',
                 logLevel: 'info',
             };
-        case 'chat.session_start':
+        case 'session_event':
             return {
                 canonicalType,
-                title: 'Session Started',
+                title: 'Session Event',
                 body: `Source: ${event.source}`,
                 icon: 'add-circle',
                 route: '/(tabs)/chat',
                 notificationType: 'chat',
                 logLevel: 'info',
             };
-        case 'chat.session_end':
+        case 'tool_invoked':
             return {
                 canonicalType,
-                title: 'Session Ended',
-                body: `Source: ${event.source}`,
-                icon: 'remove-circle',
-                route: '/(tabs)/chat',
-                notificationType: 'chat',
-                logLevel: 'info',
-            };
-        case 'tool.executed':
-            return {
-                canonicalType,
-                title: 'Tool Executed',
+                title: 'Tool Invoked',
                 body: `Source: ${event.source}`,
                 icon: 'hammer',
                 notificationType: 'system',
                 logLevel: 'debug',
             };
-        case 'system.health':
+        case 'system':
             return {
                 canonicalType,
-                title: 'System Health Update',
+                title: 'System Event',
                 body: `Source: ${event.source}`,
                 icon: 'pulse',
+                notificationType: 'system',
+                logLevel: 'info',
+            };
+        case 'orchestration_event':
+            return {
+                canonicalType,
+                title: 'Orchestration',
+                body: `Source: ${event.source}`,
+                icon: 'git-network',
+                notificationType: 'system',
+                logLevel: 'info',
+            };
+        case 'activity_logged':
+            return {
+                canonicalType,
+                title: 'Activity',
+                body: `Source: ${event.source}`,
+                icon: 'document-text',
+                notificationType: 'system',
+                logLevel: 'debug',
+            };
+        case 'task_created':
+        case 'task_updated':
+        case 'task_deleted':
+            return {
+                canonicalType,
+                title: canonicalType === 'task_created' ? 'Task Created' : canonicalType === 'task_updated' ? 'Task Updated' : 'Task Deleted',
+                body: `Source: ${event.source}`,
+                icon: 'list',
+                notificationType: 'system',
+                logLevel: 'info',
+            };
+        case 'deliverable_added':
+            return {
+                canonicalType,
+                title: 'Deliverable Added',
+                body: `Source: ${event.source}`,
+                icon: 'archive',
                 notificationType: 'system',
                 logLevel: 'info',
             };

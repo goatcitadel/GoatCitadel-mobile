@@ -268,6 +268,7 @@ export interface SystemVitals {
     platform: string;
     release: string;
     uptimeSeconds: number;
+    loadAverage: number[];
     cpuCount: number;
     memoryTotalBytes: number;
     memoryFreeBytes: number;
@@ -372,10 +373,10 @@ export interface McpServerRecord {
 // ─── Cron / Scheduled Jobs ──────────────────────
 export interface CronJobRecord {
     jobId: string;
-    label?: string;
-    schedule?: string;
+    name: string;
+    schedule: string;
     enabled: boolean;
     lastRunAt?: string;
-    lastRunStatus?: string;
     nextRunAt?: string;
+    updatedAt?: string;
 }

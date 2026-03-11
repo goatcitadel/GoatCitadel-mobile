@@ -146,6 +146,8 @@ export default function LoginScreen() {
 
                 if (status.status === 'rejected' || status.status === 'expired') {
                     setDeviceApprovalError(status.message);
+                    await deleteSecureItem(STORE_KEY_TOKEN);
+                    setAuthToken(undefined);
                 }
             } catch (error) {
                 if (!cancelled) {
@@ -163,7 +165,7 @@ export default function LoginScreen() {
             cancelled = true;
             clearInterval(intervalId);
         };
-    }, [pendingDeviceApproval, url]);
+    }, [pendingDeviceApproval?.status, pendingDeviceApproval?.requestId, pendingDeviceApproval?.requestSecret, pendingDeviceApproval?.pollAfterMs, url]);
 
     const persistConnection = useCallback(async (nextUrl: string, nextToken?: string) => {
         await setSecureItem(STORE_KEY_URL, nextUrl);

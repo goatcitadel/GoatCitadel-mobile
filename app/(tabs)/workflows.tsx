@@ -77,7 +77,7 @@ export default function WorkflowsScreen() {
                             <View style={s.jobHeader}>
                                 <View style={s.jobHeaderLeft}>
                                     <View style={[s.dotIndicator, { backgroundColor: job.enabled ? colors.success : colors.textDim }]} />
-                                    <Text style={s.jobLabel}>{job.label || job.jobId}</Text>
+                                    <Text style={s.jobLabel}>{job.name || job.jobId}</Text>
                                 </View>
                                 <GCStatusChip tone={job.enabled ? 'success' : 'muted'}>
                                     {job.enabled ? 'ACTIVE' : 'PAUSED'}
@@ -89,7 +89,7 @@ export default function WorkflowsScreen() {
                             {job.lastRunAt ? (
                                 <Text style={s.jobMeta}>
                                     Last run: {new Date(job.lastRunAt).toLocaleString()}
-                                    {job.lastRunStatus ? ` · ${job.lastRunStatus}` : ''}
+                                    {job.updatedAt ? ` · updated ${new Date(job.updatedAt).toLocaleString()}` : ''}
                                 </Text>
                             ) : (
                                 <Text style={s.jobMeta}>Never run</Text>
