@@ -20,31 +20,7 @@ export default function ApprovalListScreen() {
         { pollMs: 5000 },
     );
 
-    const mockItems: ApprovalRequest[] = [
-        {
-            approvalId: 'req-001',
-            status: 'pending',
-            kind: 'ToolExecution',
-            riskLevel: 'caution',
-            preview: { tool: 'deploy_prod', target: 'api-server' },
-            payload: {},
-            explanationStatus: 'completed',
-            createdAt: new Date().toISOString(),
-        },
-        {
-            approvalId: 'req-002',
-            status: 'pending',
-            kind: 'FileSystemWrite',
-            riskLevel: 'danger',
-            preview: { path: '/etc/nginx/nginx.conf', size: '2KB' },
-            payload: {},
-            explanationStatus: 'not_requested',
-            createdAt: new Date(Date.now() - 3600000).toISOString(),
-        }
-    ];
-
-    // Use mockItems when not connected to gateway for demo purposes
-    const items = approvals.data?.items ?? mockItems;
+    const items = approvals.data?.items ?? [];
     const pending = items.filter((a) => a.status === 'pending');
     const resolved = items.filter((a) => a.status !== 'pending');
 

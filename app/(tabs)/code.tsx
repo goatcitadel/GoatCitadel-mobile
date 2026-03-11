@@ -1,6 +1,7 @@
 /**
  * GoatCitadel Mobile — Code Screen
- * Software workflow monitoring — plans, diffs, QA, traces.
+ * Shows recent chat sessions. Honest about scope — this is a session
+ * list filtered for context, not a full code review surface.
  */
 import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
@@ -8,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCStatusChip, GCButton } from '../../src/components/ui';
-import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { fetchChatSessions } from '../../src/api/client';
 import type { ChatSessionRecord } from '../../src/api/types';
@@ -20,13 +21,18 @@ export default function CodeScreen() {
         { pollMs: 15000 },
     );
     const items = sessions.data?.items ?? [];
+    // Show sessions that have project context (likely code-related)
+    const projectSessions = items.filter(s => s.projectName);
+    const displayItems = projectSessions.length > 0 ? projectSessions : items;
 
     return (
         <SafeAreaView style={s.safe} edges={['top']}>
             <GCHeader
-                eyebrow="Code Mode"
-                title="Software Monitor"
-                subtitle="Plans, diffs, QA outcomes, and trace summaries"
+                eyebrow="Sessions"
+                title="Code Sessions"
+                subtitle={sessions.data
+                    ? `${projectSessions.length} with projects · ${items.length} total`
+                    : 'Loading…'}
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
             <ScrollView
@@ -36,36 +42,23 @@ export default function CodeScreen() {
                         tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />
                 }
             >
-                {/* Code Mode Overview */}
-                <GCCard style={s.infoCard}>
-                    <View style={s.infoIcon}>
-                        <Ionicons name="code-slash" size={24} color={colors.success} />
-                    </View>
-                    <Text style={s.infoTitle}>SOFTWARE WORKFLOW</Text>
-                    <Text style={s.infoDesc}>
-                        Code mode is optimized for monitoring and steering software development workflows.
-                        View plans, diff summaries, reviewer notes, QA outcomes, and execution traces.
-                    </Text>
-                    <View style={s.phaseGrid}>
-                        <PhaseCard icon="document-text" label="Plan" desc="Structured approach" color={colors.cyan} />
-                        <PhaseCard icon="git-compare" label="Diff" desc="Code changes" color={colors.ember} />
-                        <PhaseCard icon="eye" label="Review" desc="Reviewer notes" color="#a78bfa" />
-                        <PhaseCard icon="checkmark-done" label="QA" desc="Test outcomes" color={colors.success} />
-                    </View>
-                </GCCard>
-
-                {/* Recent Code Sessions */}
-                <Text style={s.sectionTitle}>RECENT SESSIONS</Text>
-                {items.length === 0 ? (
+                {/* Session list */}
+                {sessions.error ? (
                     <GCCard>
-                        <Text style={s.emptyText}>
-                            {sessions.error
-                                ? `Connection issue: ${sessions.error}`
-                                : 'No sessions. Start a Code session from Chat by switching to Code mode.'}
-                        </Text>
+                        <Text style={s.errorText}>Connection issue: {sessions.error}</Text>
+                    </GCCard>
+                ) : displayItems.length === 0 && !sessions.loading ? (
+                    <GCCard>
+                        <View style={s.emptyState}>
+                            <Ionicons name="code-slash-outline" size={48} color={colors.textDim} />
+                            <Text style={s.emptyText}>No code sessions found.</Text>
+                            <Text style={s.emptySubtext}>
+                                Start a Code-mode session from Chat to see it here.
+                            </Text>
+                        </View>
                     </GCCard>
                 ) : (
-                    items.slice(0, 6).map((session) => (
+                    displayItems.slice(0, 10).map((session) => (
                         <GCCard key={session.sessionId} style={s.sessionCard}>
                             <View style={s.sessionTop}>
                                 <Text style={s.sessionTitle} numberOfLines={1}>
@@ -79,49 +72,33 @@ export default function CodeScreen() {
                                 <Text style={s.sessionMetaText}>
                                     {session.tokenTotal.toLocaleString()} tokens · ${session.costUsdTotal.toFixed(4)}
                                 </Text>
+                                <Text style={s.sessionTime}>
+                                    {new Date(session.lastActivityAt).toLocaleString()}
+                                </Text>
                             </View>
                             <GCButton title="Open" variant="ghost" size="sm"
                                 onPress={() => router.push(`/(tabs)/chat/${session.sessionId}`)} />
                         </GCCard>
                     ))
                 )}
+
                 <View style={{ height: 32 }} />
             </ScrollView>
         </SafeAreaView>
     );
 }
 
-function PhaseCard({ icon, label, desc, color }: {
-    icon: keyof typeof Ionicons.glyphMap; label: string; desc: string; color: string;
-}) {
-    return (
-        <View style={s.phase}>
-            <Ionicons name={icon} size={18} color={color} />
-            <Text style={[s.phaseLabel, { color }]}>{label}</Text>
-            <Text style={s.phaseDesc}>{desc}</Text>
-        </View>
-    );
-}
-
 const s = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
     content: { paddingHorizontal: spacing.xl, paddingBottom: 32 },
-    infoCard: { marginBottom: spacing.lg },
-    infoIcon: { marginBottom: spacing.sm },
-    infoTitle: { ...typography.eyebrow, color: colors.success, marginBottom: spacing.xs },
-    infoDesc: { ...typography.bodyMd, color: colors.textMuted, marginBottom: spacing.lg },
-    phaseGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-    phase: {
-        width: '47%', backgroundColor: colors.bgInset, borderRadius: radii.sm,
-        padding: spacing.md, alignItems: 'center', gap: 4,
-    },
-    phaseLabel: { ...typography.eyebrow, fontSize: 10 },
-    phaseDesc: { ...typography.caption, color: colors.textDim, textAlign: 'center' },
-    sectionTitle: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.md },
     sessionCard: { marginBottom: spacing.md },
     sessionTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
     sessionTitle: { ...typography.bodyMd, color: colors.textPrimary, fontWeight: '600', flex: 1, marginRight: spacing.sm },
-    sessionMeta: { marginBottom: spacing.sm },
+    sessionMeta: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
     sessionMetaText: { ...typography.caption, color: colors.textDim },
-    emptyText: { ...typography.bodyMd, color: colors.textDim, fontStyle: 'italic' },
+    sessionTime: { ...typography.caption, color: colors.textDim },
+    emptyState: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
+    emptyText: { ...typography.bodyMd, color: colors.textMuted },
+    emptySubtext: { ...typography.caption, color: colors.textDim, textAlign: 'center', maxWidth: 240 },
+    errorText: { ...typography.bodySm, color: colors.crimson },
 });

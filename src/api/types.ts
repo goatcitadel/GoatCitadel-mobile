@@ -286,6 +286,13 @@ export interface ProviderRecord {
 }
 
 export interface RuntimeSettings {
+    defaultToolProfile: string;
+    budgetMode: string;
+    networkAllowlist: string[];
+    auth: {
+        mode: 'none' | 'token' | 'basic';
+        allowLoopbackBypass: boolean;
+    };
     llm: {
         activeProviderId: string;
         activeModel: string;
@@ -294,11 +301,17 @@ export interface RuntimeSettings {
 }
 
 // ─── Skills ──────────────────────────────────────
+export type SkillRuntimeState = 'enabled' | 'sleep' | 'disabled';
+
 export interface SkillListItem {
     skillId: string;
     name: string;
     description?: string;
-    state: 'enabled' | 'sleep' | 'disabled';
+    source?: string;
+    state: SkillRuntimeState;
+    note?: string;
+    declaredTools?: string[];
+    requires?: string[];
     isBuiltin: boolean;
 }
 
@@ -307,6 +320,22 @@ export interface McpServerRecord {
     serverId: string;
     label: string;
     transport: string;
-    status: 'connected' | 'disconnected' | 'error';
+    status: 'connected' | 'disconnected' | 'error' | 'connecting';
+    enabled: boolean;
+    category?: string;
+    trustTier?: 'trusted' | 'restricted' | 'quarantined';
+    costTier?: 'free' | 'mixed' | 'paid' | 'unknown';
     toolCount: number;
+    lastError?: string;
+}
+
+// ─── Cron / Scheduled Jobs ──────────────────────
+export interface CronJobRecord {
+    jobId: string;
+    label?: string;
+    schedule?: string;
+    enabled: boolean;
+    lastRunAt?: string;
+    lastRunStatus?: string;
+    nextRunAt?: string;
 }

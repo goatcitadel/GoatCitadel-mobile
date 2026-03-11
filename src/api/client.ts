@@ -13,7 +13,9 @@ import type {
     AgentProfileRecord,
     RuntimeSettings,
     SkillListItem,
+    SkillRuntimeState,
     McpServerRecord,
+    CronJobRecord,
 } from './types';
 
 let gatewayBaseUrl = 'http://127.0.0.1:8787';
@@ -165,6 +167,52 @@ export function fetchSkills(): Promise<{ items: SkillListItem[] }> {
 // ─── MCP ─────────────────────────────────────────
 export function fetchMcpServers(): Promise<{ items: McpServerRecord[] }> {
     return request('/api/mcp/servers');
+}
+
+export function connectMcpServer(serverId: string): Promise<void> {
+    return request(`/api/mcp/servers/${serverId}/connect`, { method: 'POST', body: '{}' });
+}
+
+export function disconnectMcpServer(serverId: string): Promise<void> {
+    return request(`/api/mcp/servers/${serverId}/disconnect`, { method: 'POST', body: '{}' });
+}
+
+// ─── Cron / Scheduled Jobs ──────────────────────
+export function fetchCronJobs(): Promise<{ items: CronJobRecord[] }> {
+    return request('/api/cron/jobs');
+}
+
+// ─── Skills (write) ────────────────────────────
+export function updateSkillState(
+    skillId: string,
+    body: { state: SkillRuntimeState; note?: string },
+): Promise<void> {
+    return request(`/api/skills/${skillId}/state`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+    });
+}
+
+export function reloadSkills(): Promise<void> {
+    return request('/api/skills/reload', { method: 'POST', body: '{}' });
+}
+
+// ─── Settings (write) ───────────────────────────
+export function patchSettings(
+    body: Partial<{
+        defaultToolProfile: string;
+        budgetMode: string;
+        networkAllowlist: string[];
+        llm: {
+            activeProviderId?: string;
+            activeModel?: string;
+        };
+    }>,
+): Promise<RuntimeSettings> {
+    return request('/api/settings/runtime', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+    });
 }
 
 // ─── Health Check ────────────────────────────────

@@ -20,18 +20,18 @@ interface MenuItem {
 
 const MENU: MenuItem[] = [
     { icon: 'notifications', label: 'Notifications', desc: 'Alerts & event feed', color: colors.cyan, route: '/(tabs)/notifications' },
-    { icon: 'git-branch', label: 'Cowork', desc: 'Collaborative AI workflows', color: colors.ember, route: '/(tabs)/cowork' },
-    { icon: 'code-slash', label: 'Code', desc: 'Software monitoring', color: colors.success, route: '/(tabs)/code' },
+    { icon: 'git-branch', label: 'Mission Sessions', desc: 'Mission-scope session list', color: colors.ember, route: '/(tabs)/cowork' },
+    { icon: 'code-slash', label: 'Code Sessions', desc: 'Sessions with project context', color: colors.success, route: '/(tabs)/code' },
     { icon: 'pulse', label: 'Pulse', desc: 'Live event stream', color: colors.cyan, route: '/(tabs)/pulse' },
     { icon: 'list', label: 'Sessions', desc: 'Run history & costs', color: colors.cyan, route: '/(tabs)/sessions' },
-    { icon: 'extension-puzzle', label: 'Skills', desc: 'Reusable workflows', color: colors.ember, route: '/(tabs)/skills' },
-    { icon: 'server', label: 'MCP Servers', desc: 'Tool gateways', color: '#f472b6', route: '/(tabs)/mcp' },
+    { icon: 'extension-puzzle', label: 'Skills', desc: 'Manage skill states', color: colors.ember, route: '/(tabs)/skills' },
+    { icon: 'server', label: 'MCP Servers', desc: 'Connect & monitor tool servers', color: '#f472b6', route: '/(tabs)/mcp' },
     { icon: 'terminal', label: 'System Logs', desc: 'Real-time log viewer', color: '#10b981', route: '/(tabs)/logs' },
     { icon: 'wallet', label: 'Cost Tracker', desc: 'Spend analytics & budgets', color: '#f59e0b', route: '/(tabs)/costs' },
     { icon: 'bookmarks', label: 'Bookmarks', desc: 'Pinned & saved sessions', color: '#ec4899', route: '/(tabs)/bookmarks' },
     { icon: 'heart-circle', label: 'Health', desc: 'System vitals & monitoring', color: colors.success, route: '/(tabs)/health' },
-    { icon: 'layers', label: 'Workflows', desc: 'Automation pipelines', color: '#8b5cf6', route: '/(tabs)/workflows' },
-    { icon: 'settings', label: 'Settings', desc: 'Providers, auth & config', color: colors.textMuted, route: '/(tabs)/settings' },
+    { icon: 'time', label: 'Scheduled Jobs', desc: 'Cron jobs from gateway', color: '#8b5cf6', route: '/(tabs)/workflows' },
+    { icon: 'settings', label: 'Settings', desc: 'Providers, profiles & config', color: colors.textMuted, route: '/(tabs)/settings' },
 ];
 
 export default function MoreScreen() {

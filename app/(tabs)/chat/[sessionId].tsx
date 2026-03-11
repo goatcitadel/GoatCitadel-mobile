@@ -70,6 +70,19 @@ export default function ChatThreadScreen() {
         { enabled: !!sessionId },
     );
 
+    // Hydrate session prefs (mode, provider, model) from the backend
+    useEffect(() => {
+        if (!sessionId) return;
+        let cancelled = false;
+        fetchChatPrefs(sessionId).then((prefs) => {
+            if (cancelled) return;
+            setMode(prefs.mode);
+            if (prefs.providerId) setSelectedProvider(prefs.providerId);
+            if (prefs.model) setSelectedModel(prefs.model);
+        }).catch(() => { /* prefs may not exist yet for new sessions */ });
+        return () => { cancelled = true; };
+    }, [sessionId]);
+
     // Scroll to bottom on new content
     useEffect(() => {
         if (thread.data?.turns.length || streamingContent) {
@@ -92,7 +105,11 @@ export default function ChatThreadScreen() {
         setStreamingContent('');
         setActiveTools([]);
 
-        // TODO: Pass selectedImage down streamChatResponse if supported
+        // Image: clear selection after send. Image is display-only for now;
+        // streaming pipeline does not support multimodal attachments yet.
+        if (selectedImage) {
+            showToast({ message: 'Image noted — not sent through streaming yet', type: 'warning' });
+        }
         setSelectedImage(null);
 
         const abort = streamChatResponse(sessionId, content, {
@@ -161,10 +178,11 @@ export default function ChatThreadScreen() {
     const toggleRecording = async () => {
         if (recording) {
             await recording.stopAndUnloadAsync();
-            const uri = recording.getURI();
             setRecording(null);
-            showToast({ message: `Voice memo saved (stub)`, type: 'success' });
-            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            // Voice transcription requires local or remote whisper runtime.
+            // Until wired to backend /api/voice/transcribe, just notify.
+            showToast({ message: 'Voice recording stopped — transcription not yet connected', type: 'warning' });
+            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         } else {
             try {
                 await Audio.requestPermissionsAsync();
