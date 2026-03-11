@@ -8,6 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "build:android": "eas build --platform android --profile preview",
+    "build:apk": "set ANDROID_HOME=F:\\Android\\Sdk&& set ANDROID_SDK_ROOT=F:\\Android\\Sdk&& cd android && gradlew.bat assembleRelease && cd .. && copy \/Y android\\app\\build\\outputs\\apk\\release\\app-release.apk GoatCitadel.apk",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
