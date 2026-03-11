@@ -11,7 +11,6 @@ import {
     RefreshControl,
     Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -52,7 +51,7 @@ export default function SummitScreen() {
     const isLoading = dashboard.loading && !d;
 
     return (
-        <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.safe} >
             <ScrollView
                 style={styles.scroll}
                 contentContainerStyle={styles.content}
@@ -273,7 +272,7 @@ export default function SummitScreen() {
 
                 <View style={{ height: 24 }} />
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

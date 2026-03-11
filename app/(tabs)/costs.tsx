@@ -4,7 +4,6 @@
  */
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -88,7 +87,7 @@ export default function CostScreen() {
     }, [dashboard, sessions]);
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader
                 eyebrow="Financial Analytics"
                 title="Cost Tracker"
@@ -213,7 +212,7 @@ export default function CostScreen() {
 
                 <View style={{ height: 32 }} />
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

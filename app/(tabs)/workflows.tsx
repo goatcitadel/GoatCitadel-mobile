@@ -10,7 +10,6 @@ import React, { useCallback } from 'react';
 import {
     View, Text, ScrollView, StyleSheet, RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -31,7 +30,7 @@ export default function WorkflowsScreen() {
     const active = items.filter(j => j.enabled);
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader
                 eyebrow="Automation"
                 title="Scheduled Jobs"
@@ -101,7 +100,7 @@ export default function WorkflowsScreen() {
 
                 <View style={{ height: 32 }} />
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

@@ -4,7 +4,6 @@
  */
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl, Animated, Easing } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -76,7 +75,7 @@ export default function HealthScreen() {
     const memoryPct = v ? ((v.memoryUsedBytes / v.memoryTotalBytes) * 100).toFixed(1) : '—';
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader
                 eyebrow="Infrastructure"
                 title="Health Monitor"
@@ -202,7 +201,7 @@ export default function HealthScreen() {
 
                 <View style={{ height: 32 }} />
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

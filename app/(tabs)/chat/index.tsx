@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import * as Haptics from 'expo-haptics';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useToast } from '../../../src/context/ToastContext';
 import { useRouter } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
@@ -59,7 +58,7 @@ export default function ChatSessionListScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.safe} >
             <GCHeader
                 eyebrow="Chat Workspace"
                 title="Sessions"
@@ -120,7 +119,7 @@ export default function ChatSessionListScreen() {
                     }
                 />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 

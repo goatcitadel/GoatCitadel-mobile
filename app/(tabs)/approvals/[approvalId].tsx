@@ -3,7 +3,6 @@
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../../src/components/ui';
@@ -39,10 +38,10 @@ export default function ApprovalDetailScreen() {
 
     if (!approval) {
         return (
-            <SafeAreaView style={s.safe} edges={['top']}>
+            <View style={s.safe} >
                 <GCHeader eyebrow="Gatehouse" title="Approval Detail" />
                 <View style={s.loading}><Text style={s.loadingText}>Loading…</Text></View>
-            </SafeAreaView>
+            </View>
         );
     }
 
@@ -51,7 +50,7 @@ export default function ApprovalDetailScreen() {
     const isPending = approval.status === 'pending';
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader eyebrow="Gatehouse" title={approval.kind}
                 right={<GCStatusChip tone={isPending ? 'warning' : 'muted'}>
                     {approval.status.toUpperCase()}
@@ -103,7 +102,7 @@ export default function ApprovalDetailScreen() {
                     </View>
                 ) : null}
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

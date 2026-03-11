@@ -7,7 +7,6 @@ import {
     View, Text, Pressable, StyleSheet, RefreshControl, Animated,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, GCStatusChip, FadeIn } from '../../src/components/ui';
@@ -41,7 +40,7 @@ export default function NotificationsScreen() {
     ];
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader
                 eyebrow="Notifications"
                 title="Alerts"
@@ -123,7 +122,7 @@ export default function NotificationsScreen() {
                     }
                 />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 

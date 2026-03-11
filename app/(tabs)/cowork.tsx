@@ -6,7 +6,6 @@
  */
 import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCStatusChip, GCButton } from '../../src/components/ui';
@@ -27,7 +26,7 @@ export default function CoworkScreen() {
     const missionSessions = all.filter(s => s.scope === 'mission');
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader
                 eyebrow="Sessions"
                 title="Mission Sessions"
@@ -100,7 +99,7 @@ export default function CoworkScreen() {
 
                 <View style={{ height: 32 }} />
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

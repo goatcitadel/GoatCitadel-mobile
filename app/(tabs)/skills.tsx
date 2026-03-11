@@ -5,7 +5,6 @@
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, Alert, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCStatusChip, GCButton } from '../../src/components/ui';
@@ -59,7 +58,7 @@ export default function SkillsScreen() {
     };
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader eyebrow="Capabilities" title="Skills"
                 subtitle={`${enabled.length} enabled · ${sleeping.length} sleep · ${items.length} total`}
                 right={
@@ -104,7 +103,7 @@ export default function SkillsScreen() {
                     </View>
                 }
             />
-        </SafeAreaView>
+        </View>
     );
 }
 

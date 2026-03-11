@@ -3,7 +3,6 @@
  */
 import React, { useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCStatusChip } from '../../src/components/ui';
@@ -32,7 +31,7 @@ export default function HerdScreen() {
     const active = items.filter((a) => a.activeSessions > 0);
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader eyebrow="Herd HQ" title="The Herd"
                 subtitle={`${items.length} agents · ${active.length} active`} />
             <FlatList data={items} keyExtractor={(a) => a.agentId}
@@ -48,7 +47,7 @@ export default function HerdScreen() {
                         <Text style={s.emptyText}>{agents.error || 'No agents found.'}</Text>
                     </View>
                 )} />
-        </SafeAreaView>
+        </View>
     );
 }
 

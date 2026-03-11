@@ -23,7 +23,7 @@ import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import { FlashList } from '@shopify/flash-list';
 import { useToast } from '../../../src/context/ToastContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
@@ -202,10 +202,13 @@ export default function ChatThreadScreen() {
         <MemoizedTurnCard turn={item} />
     );
 
+    const insets = useSafeAreaInsets();
+    const topPad = Math.max(insets.top, spacing.xl);
+
     return (
         <View style={styles.safe}>
             {/* Header Bar */}
-            <BlurView intensity={25} tint="dark" style={styles.headerBarBlur}>
+            <BlurView intensity={25} tint="dark" style={[styles.headerBarBlur, { paddingTop: topPad }]}>
                 <View style={styles.headerBar}>
                     <Pressable onPress={() => router.back()} style={styles.backBtn}>
                         <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />

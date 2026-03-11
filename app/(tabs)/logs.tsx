@@ -7,7 +7,6 @@ import {
     View, Text, Pressable, StyleSheet, RefreshControl,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, PulseDot } from '../../src/components/ui';
@@ -71,7 +70,7 @@ export default function LogsScreen() {
     const levels: LogLevel[] = ['all', 'info', 'warn', 'error', 'debug'];
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader
                 eyebrow="Debug & Monitoring"
                 title="System Logs"
@@ -158,7 +157,7 @@ export default function LogsScreen() {
                     }
                 />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 

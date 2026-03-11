@@ -9,7 +9,7 @@ import { colors, typography } from '../../src/theme/tokens';
 
 export default function TabLayout() {
     const insets = useSafeAreaInsets();
-    const bottomPad = Math.max(insets.bottom, 8);
+    const bottomPad = Math.max(insets.bottom, 20);
 
     return (
         <Tabs

@@ -6,7 +6,6 @@
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../src/components/ui';
@@ -90,7 +89,7 @@ export default function SettingsScreen() {
     };
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader eyebrow="Configuration" title="Settings"
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />} />
             <ScrollView contentContainerStyle={s.content}>
@@ -245,7 +244,7 @@ export default function SettingsScreen() {
 
                 <View style={{ height: 32 }} />
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

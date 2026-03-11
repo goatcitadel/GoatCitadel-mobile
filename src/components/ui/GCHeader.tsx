@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 interface Props {
@@ -15,8 +16,11 @@ interface Props {
 }
 
 export function GCHeader({ eyebrow, title, subtitle, right, style }: Props) {
+    const insets = useSafeAreaInsets();
+    const topPad = Math.max(insets.top, spacing.xl);
+
     return (
-        <View style={[styles.container, style]}>
+        <View style={[styles.container, { paddingTop: topPad + spacing.sm }, style]}>
             <View style={styles.main}>
                 {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
                 <Text style={styles.title}>{title}</Text>
@@ -33,7 +37,6 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'flex-start',
         paddingHorizontal: spacing.xl,
-        paddingTop: spacing.xl,
         paddingBottom: spacing.lg,
     },
     main: {

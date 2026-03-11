@@ -5,7 +5,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, Pressable, StyleSheet, RefreshControl, Alert } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, GCStatusChip, FadeIn, GCCard } from '../../src/components/ui';
@@ -48,7 +47,7 @@ export default function BookmarksScreen() {
     ];
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader
                 eyebrow="Quick Access"
                 title="Bookmarks"
@@ -133,7 +132,7 @@ export default function BookmarksScreen() {
                     }
                 />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 

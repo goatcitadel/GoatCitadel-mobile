@@ -4,7 +4,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, RefreshControl, Animated } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton } from '../../src/components/ui';
@@ -33,7 +32,7 @@ export default function PulseScreen() {
     const events = dashboard.data?.recentEvents ?? [];
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader
                 eyebrow="Live Feed"
                 title="Pulse"
@@ -64,7 +63,7 @@ export default function PulseScreen() {
                     }
                 />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 

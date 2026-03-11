@@ -5,7 +5,6 @@
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, Alert, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCStatusChip, GCButton } from '../../src/components/ui';
@@ -40,7 +39,7 @@ export default function McpScreen() {
     };
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader eyebrow="Tool Gateways" title="MCP Servers"
                 subtitle={`${connected.length} connected · ${items.length} total`}
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />} />
@@ -92,7 +91,7 @@ export default function McpScreen() {
                     </View>
                 }
             />
-        </SafeAreaView>
+        </View>
     );
 }
 

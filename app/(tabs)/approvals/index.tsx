@@ -5,7 +5,6 @@ import React, { useCallback } from 'react';
 import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl, Animated, Alert, Platform } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import * as Haptics from 'expo-haptics';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCStatusChip } from '../../../src/components/ui';
@@ -25,7 +24,7 @@ export default function ApprovalListScreen() {
     const resolved = items.filter((a) => a.status !== 'pending');
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader eyebrow="Gatehouse" title="Approvals"
                 subtitle={`${pending.length} pending · ${resolved.length} resolved`} />
             <FlatList data={[...pending, ...resolved]} keyExtractor={(i) => i.approvalId}
@@ -46,7 +45,7 @@ export default function ApprovalListScreen() {
                         </View>
                     )
                 } />
-        </SafeAreaView>
+        </View>
     );
 }
 function ApprovalRow({ approval, onPress, onAction }: { approval: ApprovalRequest; onPress: () => void; onAction: () => void }) {

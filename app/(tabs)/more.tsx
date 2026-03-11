@@ -3,7 +3,6 @@
  */
 import React from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader } from '../../src/components/ui';
@@ -38,7 +37,7 @@ export default function MoreScreen() {
     const router = useRouter();
     const { isTablet } = useLayout();
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader eyebrow="GoatCitadel" title="More" subtitle="Additional surfaces and configuration" />
             <ScrollView contentContainerStyle={[s.grid, isTablet && s.gridTablet]}>
                 {MENU.map((item) => (
@@ -53,7 +52,7 @@ export default function MoreScreen() {
                     </Pressable>
                 ))}
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 

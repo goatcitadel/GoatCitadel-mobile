@@ -10,7 +10,6 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getSecureItem, setSecureItem } from '../src/utils/storage';
@@ -96,7 +95,7 @@ export default function LoginScreen() {
     return (
         <ImageBackground source={require('../assets/login_bg.png')} style={s.bgImage} resizeMode="cover">
             <LinearGradient colors={['rgba(9, 10, 15, 0.4)', 'rgba(9, 10, 15, 0.95)']} style={StyleSheet.absoluteFillObject} />
-            <SafeAreaView style={s.safe}>
+            <View style={s.safe}>
                 <KeyboardAvoidingView style={s.flex}
                     behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
@@ -194,7 +193,7 @@ export default function LoginScreen() {
                         <Text style={s.version}>GoatCitadel Mobile v0.2.1 · Built with Gemini</Text>
                     </ScrollView>
                 </KeyboardAvoidingView>
-            </SafeAreaView>
+            </View>
         </ImageBackground>
     );
 }

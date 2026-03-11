@@ -3,7 +3,6 @@
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, FlatList, Pressable, TextInput, StyleSheet, RefreshControl } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, GCStatCard } from '../../src/components/ui';
@@ -31,7 +30,7 @@ export default function SessionsScreen() {
     const totalTokens = all.reduce((sum, s) => sum + s.tokenTotal, 0);
 
     return (
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.safe} >
             <GCHeader eyebrow="Operations" title="Sessions"
                 subtitle={`${all.length} total sessions`}
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />} />
@@ -77,7 +76,7 @@ export default function SessionsScreen() {
                     </View>
                 }
             />
-        </SafeAreaView>
+        </View>
     );
 }
 
