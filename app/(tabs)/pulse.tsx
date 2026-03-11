@@ -2,26 +2,16 @@
  * GoatCitadel Mobile — Pulse / Live Event Stream
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, RefreshControl, Animated } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton } from '../../src/components/ui';
-import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { fetchDashboard } from '../../src/api/client';
 import type { DashboardState, RealtimeEvent } from '../../src/api/types';
-
-const EVENT_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-    'chat.message': 'chatbubble',
-    'chat.session_start': 'add-circle',
-    'chat.session_end': 'remove-circle',
-    'approval.created': 'lock-closed',
-    'approval.resolved': 'lock-open',
-    'tool.executed': 'hammer',
-    'agent.started': 'person-add',
-    'system.health': 'pulse',
-};
+import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
 
 export default function PulseScreen() {
     const router = useRouter();
@@ -72,18 +62,18 @@ const MemoizedEventRow = React.memo(EventRow, (prev, next) => {
 });
 
 function EventRow({ event }: { event: RealtimeEvent }) {
-    const icon = EVENT_ICONS[event.eventType] || 'ellipse';
+    const meta = getRealtimeEventMeta(event);
     const time = new Date(event.timestamp);
     const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     return (
         <View style={s.row}>
             <View style={s.iconBox}>
-                <Ionicons name={icon} size={16} color={colors.cyan} />
+                <Ionicons name={meta.icon} size={16} color={colors.cyan} />
             </View>
             <View style={s.rowContent}>
-                <Text style={s.rowType}>{event.eventType}</Text>
-                <Text style={s.rowSource}>{event.source}</Text>
+                <Text style={s.rowType}>{meta.title}</Text>
+                <Text style={s.rowSource}>{meta.body}</Text>
             </View>
             <Text style={s.rowTime}>{timeStr}</Text>
         </View>

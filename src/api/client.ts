@@ -16,17 +16,46 @@ import type {
     SkillRuntimeState,
     McpServerRecord,
     CronJobRecord,
+    GatewayAccessPreflightResult,
+    GatewayAuthMode,
+    DeviceAccessRequestCreateInput,
+    DeviceAccessRequestCreateResponse,
+    DeviceAccessRequestStatusResponse,
 } from './types';
 
 let gatewayBaseUrl = 'http://127.0.0.1:8787';
 let authToken: string | undefined;
+
+class GatewayApiError extends Error {
+    kind: 'api' | 'network';
+    status?: number;
+    body?: unknown;
+    authMode?: GatewayAuthMode;
+
+    constructor(
+        message: string,
+        options: {
+            kind: 'api' | 'network';
+            status?: number;
+            body?: unknown;
+            authMode?: GatewayAuthMode;
+        },
+    ) {
+        super(message);
+        this.name = 'GatewayApiError';
+        this.kind = options.kind;
+        this.status = options.status;
+        this.body = options.body;
+        this.authMode = options.authMode;
+    }
+}
 
 export function setGatewayUrl(url: string) {
     gatewayBaseUrl = url.replace(/\/+$/, '');
 }
 
 export function setAuthToken(token: string | undefined) {
-    authToken = token;
+    authToken = token?.trim() || undefined;
 }
 
 export function getAuthToken() {
@@ -54,6 +83,41 @@ function unwrap<T>(payload: unknown): T {
     return payload as T;
 }
 
+function parseErrorBody(text: string): unknown {
+    if (!text) {
+        return undefined;
+    }
+    try {
+        return JSON.parse(text) as unknown;
+    } catch {
+        return text;
+    }
+}
+
+function readApiErrorMessage(body: unknown): string | undefined {
+    if (typeof body === 'string') {
+        return body;
+    }
+    if (body && typeof body === 'object' && 'error' in body) {
+        const value = (body as { error?: unknown }).error;
+        if (typeof value === 'string') {
+            return value;
+        }
+    }
+    return undefined;
+}
+
+function normalizeAuthMode(body: unknown): GatewayAuthMode | undefined {
+    if (!body || typeof body !== 'object' || !('authMode' in body)) {
+        return undefined;
+    }
+    const value = (body as { authMode?: unknown }).authMode;
+    if (value === 'none' || value === 'token' || value === 'basic') {
+        return value;
+    }
+    return undefined;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const method = init?.method ?? 'GET';
     const headers: Record<string, string> = {
@@ -63,17 +127,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ...(init?.headers as Record<string, string> ?? {}),
     };
 
-    const res = await fetch(`${gatewayBaseUrl}${path}`, {
-        ...init,
-        headers,
-    });
+    let res: Response;
+    try {
+        res = await fetch(`${gatewayBaseUrl}${path}`, {
+            ...init,
+            headers,
+        });
+    } catch (error) {
+        throw new GatewayApiError(
+            `Network error: ${(error as Error).message}`,
+            { kind: 'network' },
+        );
+    }
 
     if (!res.ok) {
         const text = await res.text();
-        throw new Error(`API error ${res.status}: ${text.slice(0, 300)}`);
+        const body = parseErrorBody(text);
+        throw new GatewayApiError(
+            readApiErrorMessage(body) || `API error ${res.status}`,
+            {
+                kind: 'api',
+                status: res.status,
+                body,
+                authMode: normalizeAuthMode(body),
+            },
+        );
     }
-
-    return unwrap<T>(await res.json());
+    const text = await res.text();
+    if (!text) {
+        return undefined as T;
+    }
+    return unwrap<T>(JSON.parse(text) as unknown);
 }
 
 function generateId(): string {
@@ -163,6 +247,105 @@ export function fetchRuntimeSettings(): Promise<RuntimeSettings> {
     return request('/api/settings/runtime');
 }
 
+// ─── Gateway Access / Pairing ───────────────────
+async function probeGatewayReachability(): Promise<{ ok: boolean; detail: string }> {
+    try {
+        const response = await fetch(`${gatewayBaseUrl}/api/health`, {
+            method: 'GET',
+            headers: authHeaders(),
+        });
+        return {
+            ok: true,
+            detail: response.ok
+                ? 'Gateway health endpoint responded.'
+                : `Gateway responded with HTTP ${response.status}.`,
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            detail: (error as Error).message,
+        };
+    }
+}
+
+export async function preflightGatewayAccess(): Promise<GatewayAccessPreflightResult> {
+    const health = await probeGatewayReachability();
+    if (!health.ok) {
+        return {
+            status: 'unreachable',
+            message: 'The mobile app cannot reach the gateway yet.',
+            healthDetail: health.detail,
+        };
+    }
+
+    try {
+        await request('/api/v1/onboarding/state');
+        return {
+            status: 'ready',
+            message: 'Gateway reachability and access checks passed.',
+            healthDetail: health.detail,
+        };
+    } catch (error) {
+        if (error instanceof GatewayApiError) {
+            if (error.status === 401 || error.status === 403) {
+                return {
+                    status: 'needs-auth',
+                    message: 'Gateway credentials are required to continue on this device.',
+                    healthDetail: health.detail,
+                    authMode: error.authMode,
+                };
+            }
+            if (error.status === 503) {
+                return {
+                    status: 'misconfigured',
+                    message: readApiErrorMessage(error.body) || 'Gateway auth is configured incorrectly on the server.',
+                    healthDetail: health.detail,
+                    authMode: error.authMode,
+                };
+            }
+            if (error.kind === 'network') {
+                return {
+                    status: 'unreachable',
+                    message: 'The gateway responded to health checks, but authenticated access still failed.',
+                    healthDetail: error.message,
+                };
+            }
+            return {
+                status: 'misconfigured',
+                message: readApiErrorMessage(error.body) || error.message,
+                healthDetail: health.detail,
+                authMode: error.authMode,
+            };
+        }
+        return {
+            status: 'misconfigured',
+            message: (error as Error).message,
+            healthDetail: health.detail,
+        };
+    }
+}
+
+export function createDeviceAccessRequest(
+    body: DeviceAccessRequestCreateInput,
+): Promise<DeviceAccessRequestCreateResponse> {
+    return request('/api/v1/auth/device-requests', {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+}
+
+export function pollGatewayDeviceAccessRequestStatus(
+    requestId: string,
+    requestSecret: string,
+): Promise<DeviceAccessRequestStatusResponse> {
+    return request(`/api/v1/auth/device-requests/${encodeURIComponent(requestId)}/status`, {
+        method: 'GET',
+        headers: {
+            'x-goatcitadel-device-request-secret': requestSecret,
+        },
+    });
+}
+
 // ─── Skills ──────────────────────────────────────
 export function fetchSkills(): Promise<{ items: SkillListItem[] }> {
     return request('/api/skills');
@@ -222,11 +405,11 @@ export function patchSettings(
 // ─── Health Check ────────────────────────────────
 export async function checkGatewayHealth(): Promise<boolean> {
     try {
-        await fetch(`${gatewayBaseUrl}/api/health`, {
+        const response = await fetch(`${gatewayBaseUrl}/api/health`, {
             method: 'GET',
             headers: authHeaders(),
         });
-        return true;
+        return response.ok;
     } catch {
         return false;
     }

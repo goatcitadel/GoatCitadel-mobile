@@ -14,6 +14,7 @@ import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { fetchDashboard } from '../../src/api/client';
 import type { DashboardState, RealtimeEvent } from '../../src/api/types';
+import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
 
 type LogLevel = 'all' | 'info' | 'warn' | 'error' | 'debug';
 
@@ -26,19 +27,11 @@ interface LogEntry {
 }
 
 function eventToLog(event: RealtimeEvent): LogEntry {
-    const levelMap: Record<string, LogLevel> = {
-        'system.health': 'info',
-        'tool.executed': 'debug',
-        'approval.created': 'warn',
-        'approval.resolved': 'info',
-        'chat.message': 'info',
-        'agent.started': 'info',
-        'agent.completed': 'info',
-    };
+    const meta = getRealtimeEventMeta(event);
     return {
         id: event.eventId,
-        level: levelMap[event.eventType] || 'info',
-        message: `[${event.eventType}] ${event.source}`,
+        level: meta.logLevel,
+        message: `[${meta.canonicalType}] ${meta.body}`,
         source: event.source,
         timestamp: event.timestamp,
     };
@@ -68,6 +61,13 @@ export default function LogsScreen() {
     const filtered = filter === 'all' ? logs : logs.filter(l => l.level === filter);
 
     const levels: LogLevel[] = ['all', 'info', 'warn', 'error', 'debug'];
+
+    useEffect(() => {
+        if (!autoScroll || filtered.length === 0) {
+            return;
+        }
+        listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+    }, [autoScroll, filtered.length]);
 
     return (
         <View style={s.safe} >

@@ -7,13 +7,12 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
-import { fetchRuntimeSettings, checkGatewayHealth, patchSettings } from '../../src/api/client';
+import { fetchRuntimeSettings, patchSettings, preflightGatewayAccess } from '../../src/api/client';
 import { setGatewayUrl, getGatewayUrl, setAuthToken, getAuthToken } from '../../src/api/client';
-import { setSecureItem } from '../../src/utils/storage';
+import { deleteSecureItem, setSecureItem } from '../../src/utils/storage';
 import type { RuntimeSettings } from '../../src/api/types';
 import { useToast } from '../../src/context/ToastContext';
 
@@ -33,17 +32,33 @@ export default function SettingsScreen() {
     );
 
     const testConnection = async () => {
-        setGatewayUrl(gwUrl);
-        setAuthToken(token);
-        const ok = await checkGatewayHealth();
+        const trimmedUrl = gwUrl.trim();
+        const trimmedToken = token.trim();
+        setGatewayUrl(trimmedUrl);
+        setAuthToken(trimmedToken || undefined);
+        const result = await preflightGatewayAccess();
+        const ok = result.status === 'ready';
         setGwStatus(ok ? 'online' : 'offline');
         if (ok) {
             await setSecureItem('gc_gateway_url', gwUrl);
-            await setSecureItem('gc_auth_token', token);
+            if (trimmedToken) {
+                await setSecureItem('gc_auth_token', trimmedToken);
+            } else {
+                await deleteSecureItem('gc_auth_token');
+            }
             showToast({ message: `Connected to ${gwUrl}`, type: 'success' });
             settings.refresh();
         } else {
-            Alert.alert('Unreachable', `Could not reach ${gwUrl}. Check network/firewall or your Auth Token.`);
+            Alert.alert(
+                result.status === 'needs-auth' ? 'Auth Required' : 'Connection Failed',
+                result.status === 'needs-auth'
+                    ? `${result.message} Open the login gate to request device approval or enter a valid token.`
+                    : `${result.message}${result.healthDetail ? `\n\n${result.healthDetail}` : ''}`,
+                [
+                    { text: 'Stay Here', style: 'cancel' },
+                    { text: 'Open Login Gate', onPress: () => router.push('/login') },
+                ],
+            );
         }
     };
 
@@ -241,8 +256,9 @@ export default function SettingsScreen() {
                             <Text style={s.infoLabel}>Loopback bypass</Text>
                             <Text style={s.infoValue}>{settings.data.auth.allowLoopbackBypass ? 'allowed' : 'blocked'}</Text>
                         </View>
-                        <Text style={s.sectionDesc}>
-                            Auth mode and network allowlist are configured from Mission Control.
+                    <Text style={s.sectionDesc}>
+                            Auth mode and network allowlist are configured from Mission Control. If this device loses access,
+                            reopen the login gate and request approval from another trusted session.
                         </Text>
                     </GCCard>
                 ) : null}

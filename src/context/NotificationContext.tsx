@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { fetchDashboard } from '../api/client';
 import type { RealtimeEvent } from '../api/types';
+import { getRealtimeEventMeta } from '../utils/realtimeEvents';
 
 export interface Notification {
     id: string;
@@ -35,51 +36,17 @@ const NotificationContext = createContext<NotificationContextType>({
 });
 
 function eventToNotification(event: RealtimeEvent): Notification {
-    const typeMap: Record<string, Notification['type']> = {
-        'approval.created': 'approval',
-        'approval.resolved': 'approval',
-        'agent.started': 'agent',
-        'agent.completed': 'agent',
-        'chat.message': 'chat',
-        'chat.session_start': 'chat',
-        'tool.executed': 'system',
-        'system.health': 'system',
-    };
-    const iconMap: Record<string, string> = {
-        'approval.created': 'lock-closed',
-        'approval.resolved': 'lock-open',
-        'agent.started': 'person-add',
-        'agent.completed': 'checkmark-done',
-        'chat.message': 'chatbubble',
-        'chat.session_start': 'add-circle',
-        'tool.executed': 'hammer',
-        'system.health': 'pulse',
-    };
-    const titleMap: Record<string, string> = {
-        'approval.created': 'New Approval Request',
-        'approval.resolved': 'Approval Resolved',
-        'agent.started': 'Agent Started',
-        'agent.completed': 'Agent Completed',
-        'chat.message': 'New Chat Message',
-        'chat.session_start': 'Session Started',
-        'tool.executed': 'Tool Executed',
-        'system.health': 'System Health Update',
-    };
-    const routeMap: Record<string, string> = {
-        'approval.created': '/(tabs)/approvals',
-        'chat.message': '/(tabs)/chat',
-        'agent.started': '/(tabs)/herd',
-    };
+    const meta = getRealtimeEventMeta(event);
 
     return {
         id: event.eventId,
-        title: titleMap[event.eventType] || event.eventType,
-        body: `Source: ${event.source}`,
-        type: typeMap[event.eventType] || 'system',
+        title: meta.title,
+        body: meta.body,
+        type: meta.notificationType,
         timestamp: event.timestamp,
         read: false,
-        icon: iconMap[event.eventType] || 'notifications',
-        actionRoute: routeMap[event.eventType],
+        icon: meta.icon,
+        actionRoute: meta.route,
     };
 }
 

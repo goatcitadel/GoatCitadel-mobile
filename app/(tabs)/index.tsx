@@ -24,6 +24,7 @@ import { fetchDashboard, fetchSystemVitals } from '../../src/api/client';
 import { useNotifications } from '../../src/context/NotificationContext';
 import { useQuickCommand } from '../../src/context/QuickCommandContext';
 import type { DashboardState, SystemVitals } from '../../src/api/types';
+import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
 
 export default function SummitScreen() {
     const router = useRouter();
@@ -257,15 +258,18 @@ export default function SummitScreen() {
                     <FadeIn delay={600}>
                         <GCCard style={styles.section}>
                             <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
-                            {d.recentEvents.slice(0, 5).map((event) => (
-                                <View key={event.eventId} style={styles.eventRow}>
-                                    <View style={styles.eventDot} />
-                                    <Text style={styles.eventType}>{event.eventType}</Text>
-                                    <Text style={styles.eventTime}>
-                                        {new Date(event.timestamp).toLocaleTimeString()}
-                                    </Text>
-                                </View>
-                            ))}
+                            {d.recentEvents.slice(0, 5).map((event) => {
+                                const meta = getRealtimeEventMeta(event);
+                                return (
+                                    <View key={event.eventId} style={styles.eventRow}>
+                                        <View style={styles.eventDot} />
+                                        <Text style={styles.eventType}>{meta.title}</Text>
+                                        <Text style={styles.eventTime}>
+                                            {new Date(event.timestamp).toLocaleTimeString()}
+                                        </Text>
+                                    </View>
+                                );
+                            })}
                         </GCCard>
                     </FadeIn>
                 ) : null}

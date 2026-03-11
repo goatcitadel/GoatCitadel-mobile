@@ -3,15 +3,15 @@
  * Real-time system health dashboard with vitals, uptime, and connectivity.
  */
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Animated, Easing } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
-    GCHeader, GCCard, GCStatCard, GCStatusChip, GCButton, FadeIn, PulseDot,
+    GCHeader, GCCard, GCStatusChip, GCButton, FadeIn, PulseDot,
 } from '../../src/components/ui';
-import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
-import { fetchSystemVitals, checkGatewayHealth } from '../../src/api/client';
+import { fetchSystemVitals, preflightGatewayAccess } from '../../src/api/client';
 import type { SystemVitals } from '../../src/api/types';
 
 /** Animated ring gauge component */
@@ -51,7 +51,7 @@ function formatUptime(seconds: number): string {
 
 export default function HealthScreen() {
     const router = useRouter();
-    const [gatewayStatus, setGatewayStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+    const [gatewayStatus, setGatewayStatus] = useState<'checking' | 'online' | 'auth-required' | 'misconfigured' | 'offline'>('checking');
     const [lastCheck, setLastCheck] = useState<Date | null>(null);
 
     const vitals = useApiData<SystemVitals>(
@@ -62,8 +62,16 @@ export default function HealthScreen() {
     // Gateway health check
     useEffect(() => {
         const check = async () => {
-            const ok = await checkGatewayHealth();
-            setGatewayStatus(ok ? 'online' : 'offline');
+            const result = await preflightGatewayAccess();
+            if (result.status === 'ready') {
+                setGatewayStatus('online');
+            } else if (result.status === 'needs-auth') {
+                setGatewayStatus('auth-required');
+            } else if (result.status === 'misconfigured') {
+                setGatewayStatus('misconfigured');
+            } else {
+                setGatewayStatus('offline');
+            }
             setLastCheck(new Date());
         };
         check();
@@ -72,8 +80,6 @@ export default function HealthScreen() {
     }, []);
 
     const v = vitals.data;
-    const memoryPct = v ? ((v.memoryUsedBytes / v.memoryTotalBytes) * 100).toFixed(1) : '—';
-
     return (
         <View style={s.safe} >
             <GCHeader
@@ -96,7 +102,16 @@ export default function HealthScreen() {
                 <FadeIn delay={100}>
                     <GCCard style={s.section}>
                         <View style={s.statusRow}>
-                            <PulseDot color={gatewayStatus === 'online' ? colors.success : colors.crimson} size={8} />
+                            <PulseDot
+                                color={
+                                    gatewayStatus === 'online'
+                                        ? colors.success
+                                        : gatewayStatus === 'auth-required'
+                                            ? colors.ember
+                                            : colors.crimson
+                                }
+                                size={8}
+                            />
                             <View style={s.statusInfo}>
                                 <Text style={s.statusTitle}>Gateway Connection</Text>
                                 <Text style={s.statusSubtitle}>
@@ -104,9 +119,17 @@ export default function HealthScreen() {
                                 </Text>
                             </View>
                             <GCStatusChip
-                                tone={gatewayStatus === 'online' ? 'success' : gatewayStatus === 'offline' ? 'critical' : 'muted'}
+                                tone={
+                                    gatewayStatus === 'online'
+                                        ? 'success'
+                                        : gatewayStatus === 'auth-required'
+                                            ? 'warning'
+                                            : gatewayStatus === 'offline' || gatewayStatus === 'misconfigured'
+                                                ? 'critical'
+                                                : 'muted'
+                                }
                             >
-                                {gatewayStatus.toUpperCase()}
+                                {gatewayStatus === 'auth-required' ? 'AUTH REQUIRED' : gatewayStatus.toUpperCase()}
                             </GCStatusChip>
                         </View>
                     </GCCard>

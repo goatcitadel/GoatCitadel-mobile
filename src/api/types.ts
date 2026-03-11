@@ -300,6 +300,46 @@ export interface RuntimeSettings {
     };
 }
 
+// ─── Gateway Access / Pairing ───────────────────
+export type GatewayAuthMode = 'none' | 'token' | 'basic';
+export type GatewayAccessPreflightStatus = 'ready' | 'needs-auth' | 'unreachable' | 'misconfigured';
+export type DeviceAccessRequestStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+export type DeviceAccessDeviceType = 'mobile' | 'desktop' | 'tablet' | 'browser' | 'unknown';
+
+export interface GatewayAccessPreflightResult {
+    status: GatewayAccessPreflightStatus;
+    message: string;
+    healthDetail?: string;
+    authMode?: GatewayAuthMode;
+}
+
+export interface DeviceAccessRequestCreateInput {
+    deviceLabel?: string;
+    deviceType?: DeviceAccessDeviceType;
+    platform?: string;
+}
+
+export interface DeviceAccessRequestCreateResponse {
+    requestId: string;
+    requestSecret: string;
+    approvalId: string;
+    status: DeviceAccessRequestStatus;
+    expiresAt: string;
+    pollAfterMs: number;
+    message: string;
+}
+
+export interface DeviceAccessRequestStatusResponse {
+    requestId: string;
+    approvalId: string;
+    status: DeviceAccessRequestStatus;
+    expiresAt: string;
+    resolvedAt?: string;
+    deviceToken?: string;
+    deviceTokenExpiresAt?: string;
+    message: string;
+}
+
 // ─── Skills ──────────────────────────────────────
 export type SkillRuntimeState = 'enabled' | 'sleep' | 'disabled';
 
