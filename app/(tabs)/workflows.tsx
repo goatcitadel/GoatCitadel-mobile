@@ -17,11 +17,13 @@ import {
 } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchCronJobs } from '../../src/api/client';
 import type { CronJobRecord } from '../../src/api/types';
 
 export default function WorkflowsScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const cron = useApiData<{ items: CronJobRecord[] }>(
         useCallback(() => fetchCronJobs(), []),
         { pollMs: 30000 },
@@ -38,7 +40,7 @@ export default function WorkflowsScreen() {
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
             <ScrollView
-                contentContainerStyle={s.content}
+                contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}
                 refreshControl={
                     <RefreshControl refreshing={cron.refreshing} onRefresh={cron.refresh}
                         tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />

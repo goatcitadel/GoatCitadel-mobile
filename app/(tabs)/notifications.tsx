@@ -11,12 +11,14 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, GCStatusChip, FadeIn } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { useNotifications, Notification } from '../../src/context/NotificationContext';
 
 type FilterType = 'all' | 'approval' | 'agent' | 'system' | 'chat';
 
 export default function NotificationsScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const { notifications, unreadCount, markRead, markAllRead, clearAll } = useNotifications();
     const [filter, setFilter] = useState<FilterType>('all');
 
@@ -110,7 +112,7 @@ export default function NotificationsScreen() {
                             </Pressable>
                         </FadeIn>
                     )}
-                    contentContainerStyle={s.list}
+                    contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                     ListEmptyComponent={
                         <View style={s.empty}>
                             <Ionicons name="notifications-off-outline" size={48} color={colors.textDim} />

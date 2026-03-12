@@ -11,6 +11,7 @@ import {
 } from '../../src/components/ui';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchSystemVitals, preflightGatewayAccess } from '../../src/api/client';
 import type { SystemVitals } from '../../src/api/types';
 
@@ -51,6 +52,7 @@ function formatUptime(seconds: number): string {
 
 export default function HealthScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const [gatewayStatus, setGatewayStatus] = useState<'checking' | 'online' | 'auth-required' | 'misconfigured' | 'offline'>('checking');
     const [lastCheck, setLastCheck] = useState<Date | null>(null);
 
@@ -89,7 +91,7 @@ export default function HealthScreen() {
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
             <ScrollView
-                contentContainerStyle={s.content}
+                contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}
                 refreshControl={
                     <RefreshControl
                         refreshing={vitals.refreshing} onRefresh={vitals.refresh}

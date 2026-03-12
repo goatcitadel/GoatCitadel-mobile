@@ -3,7 +3,7 @@
  */
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography } from '../../src/theme/tokens';
 
@@ -100,10 +100,11 @@ const styles = StyleSheet.create({
         elevation: 0,
     },
     tabLabel: {
-        fontFamily: typography.displayFont,
-        fontSize: 10,
-        letterSpacing: 0.8,
-        textTransform: 'uppercase',
+        fontFamily: typography.bodyFont,
+        fontSize: 11,
+        lineHeight: 13,
+        letterSpacing: 0.2,
+        fontWeight: '600',
     },
     tabItem: {
         paddingTop: 4,

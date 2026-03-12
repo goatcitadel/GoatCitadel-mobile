@@ -7,9 +7,11 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchRuntimeSettings, patchSettings, preflightGatewayAccess } from '../../src/api/client';
 import { setGatewayUrl, getGatewayUrl, setAuthToken, getAuthToken } from '../../src/api/client';
 import { deleteSecureItem, setSecureItem } from '../../src/utils/storage';
@@ -21,11 +23,13 @@ const BUDGET_MODES = ['saver', 'balanced', 'power'] as const;
 
 export default function SettingsScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const { showToast } = useToast();
     const [gwUrl, setGwUrl] = useState(getGatewayUrl());
     const [token, setToken] = useState(getAuthToken() || '');
     const [gwStatus, setGwStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
     const [saving, setSaving] = useState(false);
+    const appVersion = Constants.expoConfig?.version ?? 'dev';
 
     const settings = useApiData<RuntimeSettings>(
         useCallback(() => fetchRuntimeSettings(), []),
@@ -112,7 +116,7 @@ export default function SettingsScreen() {
         <View style={s.safe} >
             <GCHeader eyebrow="Configuration" title="Settings"
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />} />
-            <ScrollView contentContainerStyle={s.content}>
+            <ScrollView contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}>
 
                 {/* Gateway Connection */}
                 <GCCard style={s.section}>
@@ -266,7 +270,7 @@ export default function SettingsScreen() {
                 {/* About */}
                 <GCCard style={s.section}>
                     <Text style={s.sectionTitle}>ABOUT</Text>
-                    <Text style={s.aboutText}>GoatCitadel Mobile v0.1.0</Text>
+                    <Text style={s.aboutText}>GoatCitadel Mobile v{appVersion}</Text>
                     <Text style={s.aboutText}>Android-first · Expo + React Native</Text>
                     <Text style={s.dimText}>Operator-first AI command & control</Text>
                 </GCCard>

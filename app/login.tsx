@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteSecureItem, getSecureItem, setSecureItem } from '../src/utils/storage';
 import { colors, spacing, typography, radii } from '../src/theme/tokens';
 import {
@@ -37,6 +38,7 @@ type AccessView = GatewayAccessPreflightResult | {
     message: string;
     healthDetail?: string;
     authMode?: GatewayAuthMode;
+    checks?: GatewayAccessPreflightResult['checks'];
 };
 
 type PendingDeviceApprovalRequest = DeviceAccessRequestCreateResponse & {
@@ -45,6 +47,7 @@ type PendingDeviceApprovalRequest = DeviceAccessRequestCreateResponse & {
 
 export default function LoginScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const [url, setUrl] = useState('http://127.0.0.1:8787');
     const [token, setToken] = useState('');
     const [showToken, setShowToken] = useState(false);
@@ -283,7 +286,16 @@ export default function LoginScreen() {
             <LinearGradient colors={['rgba(9, 10, 15, 0.4)', 'rgba(9, 10, 15, 0.95)']} style={StyleSheet.absoluteFillObject} />
             <View style={s.safe}>
                 <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-                    <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+                    <ScrollView
+                        contentContainerStyle={[
+                            s.scroll,
+                            {
+                                paddingTop: insets.top + spacing.xl,
+                                paddingBottom: insets.bottom + spacing.xl,
+                            },
+                        ]}
+                        keyboardShouldPersistTaps="handled"
+                    >
                         <Animated.View style={[s.brandSection, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
                             <View style={s.logoContainer}>
                                 <View style={s.logoRing}>
@@ -310,7 +322,29 @@ export default function LoginScreen() {
                                         />
                                     </View>
                                     <Text style={s.statusMessage}>{access.message}</Text>
-                                    {access.healthDetail ? (
+                                    {access.checks?.length ? (
+                                        <View style={s.checkList}>
+                                            {access.checks.map((check) => (
+                                                <View key={check.id} style={s.checkCard}>
+                                                    <View style={s.checkHeader}>
+                                                        <View style={s.checkHeaderLeft}>
+                                                            <Ionicons
+                                                                name={resolveCheckIcon(check.status)}
+                                                                size={14}
+                                                                color={resolveCheckColor(check.status)}
+                                                            />
+                                                            <Text style={s.checkLabel}>{check.label}</Text>
+                                                        </View>
+                                                        <Text style={[s.checkStatus, { color: resolveCheckColor(check.status) }]}>
+                                                            {check.status.toUpperCase()}
+                                                        </Text>
+                                                    </View>
+                                                    <Text style={s.checkPath}>{check.path}</Text>
+                                                    <Text style={s.checkDetail}>{check.detail}</Text>
+                                                </View>
+                                            ))}
+                                        </View>
+                                    ) : access.healthDetail ? (
                                         <Text style={s.statusDetail}>{access.healthDetail}</Text>
                                     ) : null}
                                 </View>
@@ -511,6 +545,38 @@ function resolveStatusColor(status: AccessView['status']): string {
     return colors.textDim;
 }
 
+function resolveCheckIcon(status: NonNullable<GatewayAccessPreflightResult['checks']>[number]['status']): keyof typeof Ionicons.glyphMap {
+    if (status === 'success') {
+        return 'checkmark-circle';
+    }
+    if (status === '401') {
+        return 'lock-closed';
+    }
+    if (status === 'timeout') {
+        return 'time';
+    }
+    if (status === 'transport-blocked') {
+        return 'shield-checkmark';
+    }
+    return 'warning';
+}
+
+function resolveCheckColor(status: NonNullable<GatewayAccessPreflightResult['checks']>[number]['status']): string {
+    if (status === 'success') {
+        return colors.success;
+    }
+    if (status === '401') {
+        return colors.ember;
+    }
+    if (status === 'timeout') {
+        return '#f59e0b';
+    }
+    if (status === 'transport-blocked') {
+        return colors.crimson;
+    }
+    return colors.crimson;
+}
+
 function inferPendingDeviceType(): DeviceAccessDeviceType {
     if (Platform.OS === 'android' || Platform.OS === 'ios') {
         const { width, height } = Dimensions.get('window');
@@ -621,6 +687,49 @@ const s = StyleSheet.create({
         ...typography.caption,
         color: colors.textDim,
         fontFamily: 'monospace',
+    },
+    checkList: {
+        gap: spacing.sm,
+        marginTop: spacing.xs,
+    },
+    checkCard: {
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.06)',
+        backgroundColor: 'rgba(0, 0, 0, 0.22)',
+        padding: spacing.sm,
+        gap: 4,
+    },
+    checkHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: spacing.sm,
+    },
+    checkHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.xs,
+        flex: 1,
+    },
+    checkLabel: {
+        ...typography.eyebrow,
+        color: colors.textSecondary,
+        fontSize: 9,
+    },
+    checkStatus: {
+        ...typography.eyebrow,
+        fontSize: 9,
+    },
+    checkPath: {
+        ...typography.caption,
+        color: colors.textDim,
+        fontFamily: 'monospace',
+    },
+    checkDetail: {
+        ...typography.caption,
+        color: colors.textPrimary,
+        lineHeight: 18,
     },
     fieldGroup: { marginBottom: spacing.lg },
     fieldLabel: { ...typography.eyebrow, color: colors.cyan, marginBottom: spacing.sm, fontSize: 9, opacity: 0.8 },

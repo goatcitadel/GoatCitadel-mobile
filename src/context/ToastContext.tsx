@@ -105,12 +105,14 @@ const s = StyleSheet.create({
     },
     toast: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         backgroundColor: colors.cyan,
         paddingHorizontal: spacing.lg,
         paddingVertical: spacing.md,
         borderRadius: radii.pill,
         gap: spacing.sm,
+        maxWidth: '92%',
+        marginHorizontal: spacing.lg,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
@@ -123,5 +125,6 @@ const s = StyleSheet.create({
         ...typography.bodyMd,
         color: colors.bgCore,
         fontWeight: '600',
+        flexShrink: 1,
     }
 });

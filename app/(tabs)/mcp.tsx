@@ -10,11 +10,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCStatusChip, GCButton } from '../../src/components/ui';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchMcpServers, connectMcpServer, disconnectMcpServer } from '../../src/api/client';
 import type { McpServerRecord } from '../../src/api/types';
 
 export default function McpScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const [busyId, setBusyId] = useState<string | null>(null);
     const mcp = useApiData<{ items: McpServerRecord[] }>(
         useCallback(() => fetchMcpServers(), []),
@@ -80,7 +82,7 @@ export default function McpScreen() {
                     <RefreshControl refreshing={mcp.refreshing} onRefresh={mcp.refresh}
                         tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />
                 }
-                contentContainerStyle={s.list}
+                contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                 ListEmptyComponent={
                     <View style={s.empty}>
                         <Ionicons name="server-outline" size={48} color={colors.textDim} />

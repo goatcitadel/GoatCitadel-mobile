@@ -2,7 +2,7 @@
   "expo": {
     "name": "GoatCitadel",
     "slug": "goatcitadel-mobile",
-    "version": "0.1.0",
+    "version": "0.1.3",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "goatcitadel",
@@ -19,6 +19,7 @@
         "backgroundColor": "#06080d"
       },
       "package": "com.goatcitadel.mobile",
+      "usesCleartextTraffic": true,
       "softwareKeyboardLayoutMode": "pan"
     },
     "ios": {
@@ -34,6 +35,20 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GoatCitadel uses your photos so you can attach images to chat.",
+          "cameraPermission": "GoatCitadel uses your camera so you can take a picture and ask GoatCitadel about what you see."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GoatCitadel uses your location while the app is open so nearby questions can use your current area."
+        }
+      ],
+      "./plugins/with-lan-network-security",
       [
         "expo-build-properties",
         {

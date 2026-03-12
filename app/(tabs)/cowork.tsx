@@ -11,11 +11,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCStatusChip, GCButton } from '../../src/components/ui';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchChatSessions } from '../../src/api/client';
 import type { ChatSessionRecord } from '../../src/api/types';
 
 export default function CoworkScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const sessions = useApiData<{ items: ChatSessionRecord[] }>(
         useCallback(() => fetchChatSessions(), []),
         { pollMs: 10000 },
@@ -36,7 +38,7 @@ export default function CoworkScreen() {
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
             <ScrollView
-                contentContainerStyle={s.content}
+                contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}
                 refreshControl={
                     <RefreshControl refreshing={sessions.refreshing} onRefresh={sessions.refresh}
                         tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />

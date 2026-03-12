@@ -19,6 +19,7 @@ import {
 } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { useLayout } from '../../src/hooks/useLayout';
 import { fetchDashboard, fetchSystemVitals } from '../../src/api/client';
 import { useNotifications } from '../../src/context/NotificationContext';
@@ -28,6 +29,7 @@ import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
 
 export default function SummitScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const { isTablet } = useLayout();
     const { unreadCount } = useNotifications();
     const { toggle: toggleCommand } = useQuickCommand();
@@ -55,7 +57,7 @@ export default function SummitScreen() {
         <View style={styles.safe} >
             <ScrollView
                 style={styles.scroll}
-                contentContainerStyle={styles.content}
+                contentContainerStyle={[styles.content, { paddingBottom: bottomPad }]}
                 refreshControl={
                     <RefreshControl
                         refreshing={isRefreshing}

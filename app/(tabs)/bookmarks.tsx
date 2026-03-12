@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, GCStatusChip, FadeIn, GCCard } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchChatSessions } from '../../src/api/client';
 import type { ChatSessionRecord } from '../../src/api/types';
 
@@ -18,6 +19,7 @@ type BookmarkFilter = 'all' | 'pinned' | 'recent';
 export default function BookmarksScreen() {
     const router = useRouter();
     const [filter, setFilter] = useState<BookmarkFilter>('all');
+    const bottomPad = useBottomInsetPadding(32);
 
     const sessions = useApiData<{ items: ChatSessionRecord[] }>(
         useCallback(() => fetchChatSessions(), []),
@@ -120,7 +122,7 @@ export default function BookmarksScreen() {
                             progressBackgroundColor={colors.bgCard}
                         />
                     }
-                    contentContainerStyle={s.list}
+                    contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                     ListEmptyComponent={
                         <View style={s.empty}>
                             <Ionicons name="bookmarks-outline" size={48} color={colors.textDim} />

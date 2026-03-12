@@ -18,48 +18,83 @@ import {
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import { FlashList } from '@shopify/flash-list';
 import { useToast } from '../../../src/context/ToastContext';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
 import { colors, spacing, typography, radii } from '../../../src/theme/tokens';
-import { TypingIndicator, SkeletonBlock, FadeIn, PulseDot } from '../../../src/components/ui';
+import { TypingIndicator, SkeletonBlock } from '../../../src/components/ui';
 import { useApiData } from '../../../src/hooks/useApiData';
-import { fetchChatThread, fetchChatPrefs, fetchRuntimeSettings } from '../../../src/api/client';
+import {
+    fetchChatThread,
+    fetchChatPrefs,
+    fetchRuntimeSettings,
+    uploadChatAttachment,
+} from '../../../src/api/client';
 import { streamChatResponse } from '../../../src/api/streaming';
 import type {
+    ChatAttachmentRecord,
+    ChatInputPart,
+    ChatMemoryMode,
+    ChatThinkingLevel,
     ChatThreadResponse,
     ChatThreadTurnRecord,
     ChatMode,
     ChatToolRunRecord,
-    ChatCitationRecord,
+    ChatWebMode,
     ProviderRecord,
 } from '../../../src/api/types';
+import {
+    abortChatSessionRequest,
+    appendChatSessionStreamingDelta,
+    clearChatSessionActivity,
+    markChatSessionActive,
+    queueChatSessionMessage,
+    removeQueuedChatSessionMessage,
+    setChatSessionAbortHandler,
+    setChatSessionActiveTools,
+    setChatSessionStreamingContent,
+    setChatSessionStreamingTurn,
+    takeNextQueuedChatSessionMessage,
+    useChatSessionRuntime,
+    type QueuedChatMessage,
+} from '../../../src/features/chat/chatRuntimeStore';
+import { resolveCurrentLocationContext } from '../../../src/features/chat/mobileContext';
 
 export default function ChatThreadScreen() {
     const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
     const router = useRouter();
     const flatListRef = useRef<any>(null);
-    const abortRef = useRef<(() => void) | null>(null);
     const { showToast } = useToast();
 
     const [composerText, setComposerText] = useState('');
-    const [isStreaming, setIsStreaming] = useState(false);
-    const [streamingContent, setStreamingContent] = useState('');
-    const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
-    const [activeTools, setActiveTools] = useState<ChatToolRunRecord[]>([]);
     const [mode, setMode] = useState<ChatMode>('chat');
     const [showModeMenu, setShowModeMenu] = useState(false);
     const [showProviderPanel, setShowProviderPanel] = useState(false);
     const [selectedProvider, setSelectedProvider] = useState<string | undefined>();
     const [selectedModel, setSelectedModel] = useState<string | undefined>();
+    const [webMode, setWebMode] = useState<ChatWebMode>('auto');
+    const [memoryMode, setMemoryMode] = useState<ChatMemoryMode>('auto');
+    const [thinkingLevel, setThinkingLevel] = useState<ChatThinkingLevel>('standard');
     const [selectedImage, setSelectedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
+    const runtime = useChatSessionRuntime(sessionId);
+
+    // P0-4: Clean up active recording on unmount to avoid leaked microphone.
+    // Use a ref so the cleanup always sees the latest recording instance.
+    const recordingRef = useRef<Audio.Recording | null>(null);
+    recordingRef.current = recording;
+    useEffect(() => {
+        return () => {
+            recordingRef.current?.stopAndUnloadAsync().catch(() => {});
+        };
+    }, []);
 
     const settings = useApiData(
         useCallback(() => fetchRuntimeSettings(), []),
@@ -70,7 +105,7 @@ export default function ChatThreadScreen() {
         { enabled: !!sessionId },
     );
 
-    // Hydrate session prefs (mode, provider, model) from the backend
+    // Hydrate session prefs from the backend so follow-ups match other surfaces.
     useEffect(() => {
         if (!sessionId) return;
         let cancelled = false;
@@ -79,92 +114,319 @@ export default function ChatThreadScreen() {
             setMode(prefs.mode);
             if (prefs.providerId) setSelectedProvider(prefs.providerId);
             if (prefs.model) setSelectedModel(prefs.model);
+            setWebMode(prefs.webMode);
+            setMemoryMode(prefs.memoryMode);
+            setThinkingLevel(prefs.thinkingLevel);
         }).catch(() => { /* prefs may not exist yet for new sessions */ });
         return () => { cancelled = true; };
     }, [sessionId]);
 
+    const turns = thread.data?.turns ?? [];
+    const isServerRunning = turns.some((turn) => turn.trace.status === 'running');
+    const isStreaming = Boolean(runtime.activeRequestId);
+    const isBusy = isStreaming || isServerRunning;
+    const shouldPollThread = isServerRunning && !isStreaming;
+    const streamingContent = runtime.streamingContent;
+    const activeTools = runtime.activeTools;
+    const canSubmitDraft = Boolean(composerText.trim() || selectedImage);
+
     // Scroll to bottom on new content
     useEffect(() => {
         if (thread.data?.turns.length || streamingContent) {
-            setTimeout(() => {
+            const timerId = setTimeout(() => {
                 flatListRef.current?.scrollToEnd({ animated: true });
             }, 100);
+            return () => clearTimeout(timerId);
         }
     }, [thread.data?.turns.length, streamingContent]);
 
-    const handleSend = () => {
-        if (!composerText.trim() || !sessionId || isStreaming) return;
+    useEffect(() => {
+        if (!sessionId || !shouldPollThread) {
+            return;
+        }
+        const interval = setInterval(() => {
+            void thread.reload();
+        }, 4000);
+        return () => clearInterval(interval);
+    }, [sessionId, shouldPollThread, thread.reload]);
+
+    const stopLocalWait = useCallback(() => {
+        if (!sessionId) {
+            return false;
+        }
+        const aborted = abortChatSessionRequest(sessionId);
+        if (aborted) {
+            clearChatSessionActivity(sessionId);
+            void thread.reload();
+        }
+        return aborted;
+    }, [sessionId, thread.reload]);
+
+    const executeQueuedMessage = useCallback(async (item: QueuedChatMessage) => {
+        if (!sessionId) {
+            return;
+        }
+
+        const requestId = item.id;
+        let liveTools: ChatToolRunRecord[] = [];
+        let settled = false;
+        const finish = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            setChatSessionAbortHandler(sessionId, undefined);
+            clearChatSessionActivity(sessionId);
+            void thread.reload();
+        };
+
+        markChatSessionActive(sessionId, {
+            requestId,
+            preview: item.content,
+            startedAt: new Date().toISOString(),
+        });
+        setChatSessionActiveTools(sessionId, liveTools);
+
+        try {
+            const uploadedAttachments = item.image
+                ? [await uploadSelectedImage(sessionId, item.image)]
+                : [];
+            const locationContext = await resolveCurrentLocationContext(item.content);
+
+            if (locationContext.status === 'permission-denied') {
+                showToast({
+                    message: 'Location permission was denied, so this request was sent without GPS context.',
+                    type: 'warning',
+                });
+            } else if (locationContext.status === 'unavailable') {
+                showToast({
+                    message: 'Current location was unavailable, so this request was sent without GPS context.',
+                    type: 'warning',
+                });
+            }
+
+            const parts = buildOutgoingParts(
+                item.content,
+                uploadedAttachments,
+                locationContext.status === 'attached' ? locationContext.context : undefined,
+            );
+
+            const abort = streamChatResponse(sessionId, item.content, {
+                onMessageStart: (turnId) => {
+                    if (Platform.OS !== 'web') {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    setChatSessionStreamingTurn(sessionId, turnId);
+                },
+                onDelta: (delta) => {
+                    appendChatSessionStreamingDelta(sessionId, delta);
+                },
+                onToolStart: (_turnId, chunk) => {
+                    liveTools = [...liveTools, (chunk as any).toolRun];
+                    setChatSessionActiveTools(sessionId, liveTools);
+                },
+                onToolResult: (_turnId, chunk) => {
+                    liveTools = liveTools.map((tool) =>
+                        tool.toolRunId === (chunk as any).toolRun.toolRunId ? (chunk as any).toolRun : tool,
+                    );
+                    setChatSessionActiveTools(sessionId, liveTools);
+                },
+                onMessageDone: (_turnId, _messageId, content) => {
+                    setChatSessionStreamingContent(sessionId, content);
+                    // P2-6: Haptic removed here — onDone already fires a success haptic.
+                },
+                onDone: () => {
+                    if (Platform.OS !== 'web') {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    }
+                    finish();
+                },
+                onError: (error) => {
+                    if (Platform.OS !== 'web') {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                    }
+                    if (isChatTurnBusyError(error)) {
+                        const retryCount = (item._retryCount ?? 0) + 1;
+                        const MAX_BUSY_RETRIES = 5;
+                        if (retryCount > MAX_BUSY_RETRIES) {
+                            finish();
+                            showToast({
+                                message: `Gave up after ${MAX_BUSY_RETRIES} retries — the server turn never cleared. Try again later.`,
+                                type: 'error',
+                            });
+                            return;
+                        }
+                        // Exponential backoff: 2s, 4s, 8s, 16s, 32s to avoid hammering a busy gateway.
+                        const backoffMs = Math.min(2000 * Math.pow(2, retryCount - 1), 32000);
+                        const retryItem = { ...item, _retryCount: retryCount };
+                        finish();
+                        setTimeout(() => {
+                            queueChatSessionMessage(sessionId, retryItem, { front: item.priority });
+                        }, backoffMs);
+                        showToast({
+                            message: item.priority
+                                ? 'Steer request is queued next and will run as soon as the current turn clears.'
+                                : `That message is queued and will retry in ${backoffMs / 1000}s. (retry ${retryCount}/${MAX_BUSY_RETRIES})`,
+                            type: 'info',
+                        });
+                        return;
+                    }
+                    finish();
+                    console.warn('[chat] request failed', error);
+                    showToast({
+                        message: formatChatRequestError(error),
+                        type: 'error',
+                    });
+                },
+            }, {
+                mode: item.mode,
+                providerId: item.providerId,
+                model: item.model,
+                webMode: item.webMode,
+                memoryMode: item.memoryMode,
+                thinkingLevel: item.thinkingLevel,
+                attachments: uploadedAttachments.map((attachment) => attachment.attachmentId),
+                parts,
+            });
+
+            setChatSessionAbortHandler(sessionId, abort);
+        } catch (error) {
+            setChatSessionAbortHandler(sessionId, undefined);
+            clearChatSessionActivity(sessionId);
+            showToast({
+                message: (error as Error).message || 'Failed to prepare this message.',
+                type: 'error',
+            });
+        }
+    }, [sessionId, showToast, thread.reload]);
+
+    useEffect(() => {
+        if (!sessionId || isBusy) {
+            return;
+        }
+        const nextMessage = takeNextQueuedChatSessionMessage(sessionId);
+        if (!nextMessage) {
+            return;
+        }
+        void executeQueuedMessage(nextMessage);
+    }, [executeQueuedMessage, isBusy, runtime.queuedMessages.length, sessionId]);
+
+    const queueComposerMessage = useCallback((priority = false) => {
+        if (!sessionId || !canSubmitDraft) {
+            return;
+        }
 
         if (Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            Haptics.impactAsync(priority ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium);
         }
 
-        const content = composerText.trim();
+        const nextMessage: QueuedChatMessage = {
+            id: `queue-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+            content: composerText.trim() || 'What is in this image?',
+            image: selectedImage,
+            mode,
+            providerId: selectedProvider,
+            model: selectedModel,
+            webMode,
+            memoryMode,
+            thinkingLevel,
+            createdAt: new Date().toISOString(),
+            priority,
+        };
+
+        queueChatSessionMessage(sessionId, nextMessage, { front: priority });
         setComposerText('');
-        setIsStreaming(true);
-        setStreamingContent('');
-        setActiveTools([]);
-
-        // Image: clear selection after send. Image is display-only for now;
-        // streaming pipeline does not support multimodal attachments yet.
-        if (selectedImage) {
-            showToast({ message: 'Image noted — not sent through streaming yet', type: 'warning' });
-        }
         setSelectedImage(null);
 
-        const abort = streamChatResponse(sessionId, content, {
-            onMessageStart: (turnId) => {
-                if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setStreamingTurnId(turnId);
-            },
-            onDelta: (delta) => {
-                setStreamingContent((prev) => prev + delta);
-            },
-            onToolStart: (_turnId, chunk) => {
-                setActiveTools((prev) => [...prev, (chunk as any).toolRun]);
-            },
-            onToolResult: (_turnId, chunk) => {
-                setActiveTools((prev) =>
-                    prev.map((t) =>
-                        t.toolRunId === (chunk as any).toolRun.toolRunId ? (chunk as any).toolRun : t,
-                    ),
-                );
-            },
-            onMessageDone: () => {
-                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setIsStreaming(false);
-                setStreamingContent('');
-                setStreamingTurnId(null);
-                setActiveTools([]);
-                thread.reload();
-            },
-            onDone: () => {
-                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setIsStreaming(false);
-                setStreamingContent('');
-                setStreamingTurnId(null);
-                setActiveTools([]);
-                thread.reload();
-            },
-            onError: (error) => {
-                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                setIsStreaming(false);
-                setStreamingContent((prev) => prev + `\n\n⚠️ ${error}`);
-            },
-        }, { mode, providerId: selectedProvider, model: selectedModel });
+        if (priority) {
+            const stoppedLocally = stopLocalWait();
+            if (stoppedLocally) {
+                showToast({
+                    message: 'Steer queued next. The current mobile wait was stopped locally.',
+                    type: 'info',
+                });
+            } else if (isBusy) {
+                showToast({
+                    message: 'Steer queued next. It will run as soon as the current turn clears.',
+                    type: 'info',
+                });
+            }
+            return;
+        }
 
-        abortRef.current = abort;
-    };
+        if (isBusy) {
+            showToast({
+                message: 'Message queued while the current turn finishes.',
+                type: 'info',
+            });
+        }
+    }, [
+        canSubmitDraft,
+        composerText,
+        isBusy,
+        memoryMode,
+        mode,
+        selectedImage,
+        selectedModel,
+        selectedProvider,
+        sessionId,
+        showToast,
+        thinkingLevel,
+        stopLocalWait,
+        webMode,
+    ]);
 
-    const handleStop = () => {
-        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
-        abortRef.current?.();
-        setIsStreaming(false);
-    };
+    const handleSend = useCallback(() => {
+        queueComposerMessage(false);
+    }, [queueComposerMessage]);
+
+    const handleSteerNext = useCallback(() => {
+        queueComposerMessage(true);
+    }, [queueComposerMessage]);
+
+    const handleStop = useCallback(() => {
+        if (!sessionId) {
+            return;
+        }
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+        }
+        const stopped = stopLocalWait();
+        if (stopped) {
+            showToast({
+                message: 'Stream stopped. The server turn may still finish in the background.',
+                type: 'info',
+            });
+        } else {
+            showToast({
+                message: 'This turn is still running on the server, so there was no local stream to stop.',
+                type: 'warning',
+            });
+        }
+    }, [sessionId, showToast, stopLocalWait]);
 
     const handlePickImage = async () => {
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            quality: 0.8,
+        });
+
+        if (!result.canceled) {
+            setSelectedImage(result.assets[0]);
+        }
+    };
+
+    const handleTakePhoto = async () => {
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+            showToast({ message: 'Camera permission denied', type: 'warning' });
+            return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
             quality: 0.8,
@@ -185,7 +447,11 @@ export default function ChatThreadScreen() {
             if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         } else {
             try {
-                await Audio.requestPermissionsAsync();
+                const perm = await Audio.requestPermissionsAsync();
+                if (!perm.granted) {
+                    showToast({ message: 'Microphone permission denied', type: 'warning' });
+                    return;
+                }
                 await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
                 const { recording: r } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
                 setRecording(r);
@@ -196,14 +462,14 @@ export default function ChatThreadScreen() {
         }
     };
 
-    const turns = thread.data?.turns ?? [];
-
     const renderTurn = ({ item }: { item: ChatThreadTurnRecord }) => (
         <MemoizedTurnCard turn={item} />
     );
 
     const insets = useSafeAreaInsets();
     const topPad = Math.max(insets.top, spacing.xl);
+    const threadBottomPad = insets.bottom + 20;
+    const composerBottomPad = insets.bottom + (Platform.OS === 'android' ? spacing.sm : spacing.lg);
 
     return (
         <View style={styles.safe}>
@@ -292,7 +558,7 @@ export default function ChatThreadScreen() {
                     data={turns}
                     keyExtractor={(t) => t.turnId}
                     renderItem={renderTurn}
-                    contentContainerStyle={styles.threadContent}
+                    contentContainerStyle={[styles.threadContent, { paddingBottom: threadBottomPad }]}
                     refreshControl={
                         <RefreshControl
                             refreshing={thread.refreshing}
@@ -345,7 +611,7 @@ export default function ChatThreadScreen() {
                                         <View style={styles.streamingDot} />
                                     ) : null}
                                 </View>
-                            ) : isStreaming ? (
+                            ) : isBusy ? (
                                 <View style={styles.thinkingBar}>
                                     <TypingIndicator />
                                     <Text style={styles.thinkingText}>Thinking…</Text>
@@ -356,7 +622,7 @@ export default function ChatThreadScreen() {
                 />
 
                 {/* Quick Prompts */}
-                {(!isStreaming && turns.length === 0) ? (
+                {(!isBusy && turns.length === 0) ? (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickPrompts}>
                         {['What can you do?', 'Show my pending approvals', 'Analyze latest error logs', 'Summarize recent tasks'].map((p, i) => (
                             <Pressable key={i} style={styles.quickPromptChip} onPress={() => {
@@ -371,7 +637,46 @@ export default function ChatThreadScreen() {
                 ) : null}
 
                 {/* Composer */}
-                <View style={styles.composerContainer}>
+                <View style={[styles.composerContainer, { paddingBottom: composerBottomPad }]}>
+                    {(isBusy || runtime.queuedMessages.length > 0) ? (
+                        <View style={styles.queueStatusCard}>
+                            <View style={styles.queueStatusHeader}>
+                                <View style={styles.queueStatusCopy}>
+                                    <Text style={styles.queueStatusTitle}>
+                                        {isBusy ? 'Assistant busy' : 'Queued messages ready'}
+                                    </Text>
+                                    <Text style={styles.queueStatusText}>
+                                        {isBusy
+                                            ? 'Keep typing. Queue adds to the end, Steer Next jumps to the front.'
+                                            : 'Queued messages will send in order.'}
+                                    </Text>
+                                </View>
+                                {runtime.queuedMessages.length > 0 ? (
+                                    <View style={styles.queueCountBadge}>
+                                        <Text style={styles.queueCountText}>{runtime.queuedMessages.length}</Text>
+                                    </View>
+                                ) : null}
+                            </View>
+                            {runtime.queuedMessages.slice(0, 3).map((message) => (
+                                <View key={message.id} style={styles.queueItemRow}>
+                                    <View style={styles.queueItemCopy}>
+                                        <Text style={styles.queueItemText} numberOfLines={1}>
+                                            {summarizeQueuedMessage(message)}
+                                        </Text>
+                                        {message.priority ? (
+                                            <Text style={styles.queueItemTag}>STEER NEXT</Text>
+                                        ) : null}
+                                    </View>
+                                    <Pressable
+                                        style={styles.queueRemoveBtn}
+                                        onPress={() => sessionId && removeQueuedChatSessionMessage(sessionId, message.id)}
+                                    >
+                                        <Ionicons name="close" size={14} color={colors.textDim} />
+                                    </Pressable>
+                                </View>
+                            ))}
+                        </View>
+                    ) : null}
                     {selectedImage ? (
                         <View style={styles.composerAttachments}>
                             <View style={styles.imagePreviewWrapper}>
@@ -386,6 +691,9 @@ export default function ChatThreadScreen() {
                         <Pressable style={styles.attachBtn} onPress={handlePickImage}>
                             <Ionicons name="add-circle" size={24} color={colors.textDim} />
                         </Pressable>
+                        <Pressable style={styles.attachBtn} onPress={handleTakePhoto}>
+                            <Ionicons name="camera-outline" size={22} color={colors.textDim} />
+                        </Pressable>
                         <TextInput
                             style={styles.composerInput}
                             placeholder={`Message (${mode} mode)…`}
@@ -394,15 +702,23 @@ export default function ChatThreadScreen() {
                             onChangeText={setComposerText}
                             multiline
                             maxLength={32000}
-                            editable={!isStreaming}
                             onSubmitEditing={handleSend}
                             blurOnSubmit={false}
                         />
-                        {isStreaming ? (
+                        {isBusy && canSubmitDraft ? (
+                            <View style={styles.composerActionButtons}>
+                                <Pressable style={styles.steerBtn} onPress={handleSteerNext}>
+                                    <Text style={styles.steerBtnText}>STEER NEXT</Text>
+                                </Pressable>
+                                <Pressable style={styles.queueBtn} onPress={handleSend}>
+                                    <Text style={styles.queueBtnText}>QUEUE</Text>
+                                </Pressable>
+                            </View>
+                        ) : isStreaming ? (
                             <Pressable style={styles.stopBtn} onPress={handleStop}>
                                 <Ionicons name="stop-circle" size={28} color={colors.crimson} />
                             </Pressable>
-                        ) : composerText.trim() ? (
+                        ) : canSubmitDraft ? (
                             <Pressable
                                 style={styles.sendBtn}
                                 onPress={handleSend}
@@ -560,7 +876,8 @@ function TurnCard({ turn }: { turn: ChatThreadTurnRecord }) {
 const MemoizedTurnCard = React.memo(TurnCard, (prev, next) => {
     return prev.turn.turnId === next.turn.turnId &&
         prev.turn.toolRuns.length === next.turn.toolRuns.length &&
-        prev.turn.assistantMessage?.content === next.turn.assistantMessage?.content;
+        prev.turn.assistantMessage?.content === next.turn.assistantMessage?.content &&
+        prev.turn.trace.status === next.turn.trace.status;
 });
 
 function ToolRunRow({ tool }: { tool: ChatToolRunRecord }) {
@@ -586,21 +903,15 @@ function ToolRunRow({ tool }: { tool: ChatToolRunRecord }) {
     );
 }
 
-function MarkdownContent({ content }: { content: string }) {
-    const { showToast } = useToast();
-
-    const handleCopy = async (text: string) => {
-        await Clipboard.setStringAsync(text);
-        showToast({ message: 'Code copied', type: 'success' });
-    };
-
-    const rules = {
-        fence: (node: any, children: any, parent: any, ruleStyles: any) => {
+// P2-1: Hoisted markdown rules factory to avoid re-creating the rules object on every render.
+function createMarkdownRules(onCopy: (text: string) => void) {
+    return {
+        fence: (node: any, _children: any, _parent: any, ruleStyles: any) => {
             return (
                 <View key={node.key} style={ruleStyles.code_wrapper}>
                     <View style={ruleStyles.code_header}>
                         <Text style={ruleStyles.code_lang}>{node.sourceInfo || 'code'}</Text>
-                        <Pressable style={ruleStyles.code_copy} onPress={() => handleCopy(node.content)}>
+                        <Pressable style={ruleStyles.code_copy} onPress={() => onCopy(node.content)}>
                             <Ionicons name="copy-outline" size={14} color={colors.textDim} />
                             <Text style={ruleStyles.code_copy_text}>COPY</Text>
                         </Pressable>
@@ -612,6 +923,17 @@ function MarkdownContent({ content }: { content: string }) {
             );
         }
     };
+}
+
+function MarkdownContent({ content }: { content: string }) {
+    const { showToast } = useToast();
+
+    const handleCopy = useCallback(async (text: string) => {
+        await Clipboard.setStringAsync(text);
+        showToast({ message: 'Code copied', type: 'success' });
+    }, [showToast]);
+
+    const rules = React.useMemo(() => createMarkdownRules(handleCopy), [handleCopy]);
 
     return (
         <Markdown
@@ -633,6 +955,84 @@ function modeDesc(m: ChatMode): string {
         : m === 'cowork'
             ? 'Collaborative delegation'
             : 'Software-focused workflow';
+}
+
+function isChatTurnBusyError(error: string): boolean {
+    return /already (?:in progress|being generated|running)|wait for the current|turn is (?:still )?(?:active|running)|busy|concurrent.*turn/i.test(error);
+}
+
+function formatChatRequestError(error: string): string {
+    const normalized = error.toLowerCase();
+    if (normalized.includes('timed out') || normalized.includes('timeout=')) {
+        return 'The chat request timed out. The assistant may still finish in the background, so pull to refresh in a few seconds.';
+    }
+    if (normalized.includes('network error')) {
+        return 'The app lost contact with the gateway while this message was running. Check the connection and try again.';
+    }
+    if (normalized.includes('stream error 401') || normalized.includes('stream error 403') || normalized.includes('credentials are required')) {
+        return 'The gateway rejected this chat request. Reconnect or refresh your device access, then try again.';
+    }
+    return error || 'Chat request failed.';
+}
+
+function summarizeQueuedMessage(message: QueuedChatMessage): string {
+    const normalized = message.content.replace(/\s+/g, ' ').trim();
+    if (normalized.length <= 56) {
+        return normalized;
+    }
+    return `${normalized.slice(0, 53)}...`;
+}
+
+async function uploadSelectedImage(
+    sessionId: string,
+    asset: ImagePicker.ImagePickerAsset,
+): Promise<ChatAttachmentRecord> {
+    const bytesBase64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+    });
+    return uploadChatAttachment({
+        sessionId,
+        fileName: resolveAttachmentFileName(asset),
+        mimeType: asset.mimeType || 'image/jpeg',
+        bytesBase64,
+    });
+}
+
+function buildOutgoingParts(
+    content: string,
+    attachments: ChatAttachmentRecord[],
+    locationContext?: string,
+): ChatInputPart[] | undefined {
+    if (!locationContext && attachments.length === 0) {
+        return undefined;
+    }
+
+    const parts: ChatInputPart[] = [{ type: 'text', text: content }];
+    if (locationContext) {
+        parts.push({
+            type: 'text',
+            text: locationContext,
+        });
+    }
+    for (const attachment of attachments) {
+        parts.push({
+            type: attachment.mimeType.startsWith('image/') ? 'image_ref' : 'file_ref',
+            attachmentId: attachment.attachmentId,
+            mimeType: attachment.mimeType,
+        });
+    }
+    return parts;
+}
+
+function resolveAttachmentFileName(asset: ImagePicker.ImagePickerAsset): string {
+    if (asset.fileName?.trim()) {
+        return asset.fileName;
+    }
+    const fromUri = asset.uri.split('/').pop()?.trim();
+    if (fromUri) {
+        return fromUri;
+    }
+    return `mobile-image-${Date.now()}.jpg`;
 }
 
 function stepColor(status: string): string {
@@ -980,6 +1380,75 @@ const styles = StyleSheet.create({
         paddingVertical: spacing.sm,
         paddingBottom: Platform.OS === 'android' ? spacing.sm : spacing.lg,
     },
+    queueStatusCard: {
+        backgroundColor: colors.bgInset,
+        borderWidth: 1,
+        borderColor: colors.borderCyan,
+        borderRadius: radii.md,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        marginBottom: spacing.sm,
+        gap: spacing.xs,
+    },
+    queueStatusHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    queueStatusCopy: { flex: 1 },
+    queueStatusTitle: {
+        ...typography.eyebrow,
+        color: colors.textPrimary,
+    },
+    queueStatusText: {
+        ...typography.caption,
+        color: colors.textDim,
+    },
+    queueCountBadge: {
+        minWidth: 24,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: radii.pill,
+        backgroundColor: 'rgba(84, 221, 255, 0.12)',
+        borderWidth: 1,
+        borderColor: colors.borderCyan,
+        alignItems: 'center',
+    },
+    queueCountText: {
+        ...typography.caption,
+        color: colors.cyan,
+        fontWeight: '700',
+    },
+    queueItemRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        paddingTop: 2,
+    },
+    queueItemCopy: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.xs,
+    },
+    queueItemText: {
+        ...typography.bodySm,
+        color: colors.textSecondary,
+        flex: 1,
+    },
+    queueItemTag: {
+        ...typography.caption,
+        color: colors.cyan,
+        fontWeight: '700',
+    },
+    queueRemoveBtn: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.bgCard,
+    },
     quickPrompts: {
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.sm,
@@ -1012,6 +1481,13 @@ const styles = StyleSheet.create({
         paddingLeft: spacing.xs,
         minHeight: 44,
         maxHeight: 120,
+    },
+    composerActionButtons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.xs,
+        marginLeft: spacing.xs,
+        marginBottom: Platform.OS === 'android' ? 2 : 5,
     },
     attachBtn: {
         paddingHorizontal: spacing.sm,
@@ -1049,6 +1525,32 @@ const styles = StyleSheet.create({
     sendBtn: {
         padding: spacing.sm,
         marginLeft: spacing.xs,
+    },
+    queueBtn: {
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 8,
+        borderRadius: radii.pill,
+        backgroundColor: colors.bgInset,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+    },
+    queueBtnText: {
+        ...typography.caption,
+        color: colors.textPrimary,
+        fontWeight: '700',
+    },
+    steerBtn: {
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 8,
+        borderRadius: radii.pill,
+        backgroundColor: 'rgba(84, 221, 255, 0.12)',
+        borderWidth: 1,
+        borderColor: colors.borderCyan,
+    },
+    steerBtnText: {
+        ...typography.caption,
+        color: colors.cyan,
+        fontWeight: '700',
     },
     recordingActiveBtn: {
         backgroundColor: 'rgba(255,86,120,0.15)',

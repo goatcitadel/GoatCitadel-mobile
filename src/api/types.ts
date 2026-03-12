@@ -8,6 +8,8 @@ import type {
     AgentProfileRecord,
     ApprovalRequest,
     ApprovalStatus,
+    ChatAttachmentRecord,
+    ChatInputPart,
     ChatSessionRecord,
     CronJobRecord,
     DashboardState,
@@ -28,6 +30,8 @@ export type {
     AgentProfileRecord,
     ApprovalRequest,
     ApprovalStatus,
+    ChatAttachmentRecord,
+    ChatInputPart,
     ChatSessionRecord,
     CronJobRecord,
     DashboardState,
@@ -61,6 +65,7 @@ export interface ChatMessageRecord {
     actorType: 'user' | 'agent' | 'system';
     actorId: string;
     content: string;
+    parts?: ChatInputPart[];
     timestamp: string;
     tokenInput?: number;
     tokenOutput?: number;
@@ -181,12 +186,26 @@ export interface ChatSessionPrefsRecord {
 
 export interface ChatSendMessageRequest {
     content: string;
+    parts?: ChatInputPart[];
     providerId?: string;
     model?: string;
     mode?: ChatMode;
     webMode?: ChatWebMode;
+    memoryMode?: ChatMemoryMode;
     thinkingLevel?: ChatThinkingLevel;
     attachments?: string[];
+}
+
+export interface ChatSendMessageResponse {
+    sessionId: string;
+    userMessage: ChatMessageRecord;
+    assistantMessage?: ChatMessageRecord;
+    transport: 'llm' | 'integration';
+    model?: string;
+    turnId?: string;
+    trace?: ChatTurnTraceRecord;
+    citations?: ChatCitationRecord[];
+    routing?: ChatTurnTraceRecord['routing'];
 }
 
 // ─── Streaming ───────────────────────────────────
@@ -229,10 +248,21 @@ export interface RuntimeSettings {
 export type GatewayAuthMode = 'none' | 'token' | 'basic';
 export type GatewayAccessPreflightStatus = 'ready' | 'needs-auth' | 'unreachable' | 'misconfigured';
 export type DeviceAccessDeviceType = DeviceAccessRequestDeviceType;
+export type GatewayConnectionCheckStatus = 'success' | 'transport-blocked' | 'timeout' | '401' | 'http-error';
+
+export interface GatewayConnectionCheck {
+    id: 'native-module' | 'health' | 'auth';
+    label: string;
+    path: string;
+    status: GatewayConnectionCheckStatus;
+    detail: string;
+    statusCode?: number;
+}
 
 export interface GatewayAccessPreflightResult {
     status: GatewayAccessPreflightStatus;
     message: string;
     healthDetail?: string;
     authMode?: GatewayAuthMode;
+    checks?: GatewayConnectionCheck[];
 }

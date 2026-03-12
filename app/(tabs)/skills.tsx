@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCStatusChip, GCButton } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchSkills, updateSkillState, reloadSkills } from '../../src/api/client';
 import type { SkillListItem, SkillRuntimeState } from '../../src/api/types';
 import { useToast } from '../../src/context/ToastContext';
@@ -39,6 +40,7 @@ function getSkillSummary(skill: SkillListItem): string | undefined {
 
 export default function SkillsScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const { showToast } = useToast();
     const [busyId, setBusyId] = useState<string | null>(null);
     const skills = useApiData<{ items: SkillListItem[] }>(
@@ -111,7 +113,7 @@ export default function SkillsScreen() {
                     <RefreshControl refreshing={skills.refreshing} onRefresh={skills.refresh}
                         tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />
                 }
-                contentContainerStyle={s.list}
+                contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                 ListEmptyComponent={
                     <View style={s.empty}>
                         <Ionicons name="extension-puzzle-outline" size={48} color={colors.textDim} />

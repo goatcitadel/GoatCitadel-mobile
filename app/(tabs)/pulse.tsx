@@ -9,12 +9,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton } from '../../src/components/ui';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchDashboard } from '../../src/api/client';
 import type { DashboardState, RealtimeEvent } from '../../src/api/types';
 import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
 
 export default function PulseScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const dashboard = useApiData<DashboardState>(
         useCallback(() => fetchDashboard(), []),
         { pollMs: 5000 },
@@ -42,7 +44,7 @@ export default function PulseScreen() {
                         <RefreshControl refreshing={dashboard.refreshing} onRefresh={dashboard.refresh}
                             tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />
                     }
-                    contentContainerStyle={s.list}
+                    contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                     ListEmptyComponent={
                         <View style={s.empty}>
                             <Ionicons name="pulse-outline" size={48} color={colors.textDim} />

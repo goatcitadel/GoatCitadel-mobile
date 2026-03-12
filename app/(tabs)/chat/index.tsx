@@ -22,12 +22,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton } from '../../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../../src/theme/tokens';
 import { useApiData } from '../../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../../src/hooks/useBottomInsetPadding';
 import { fetchChatSessions, createChatSession, deleteChatSession } from '../../../src/api/client';
 import type { ChatSessionRecord } from '../../../src/api/types';
 
 export default function ChatSessionListScreen() {
     const router = useRouter();
     const [search, setSearch] = useState('');
+    const bottomPad = useBottomInsetPadding(32);
 
     const sessions = useApiData<{ items: ChatSessionRecord[] }>(
         useCallback(() => fetchChatSessions(), []),
@@ -106,7 +108,7 @@ export default function ChatSessionListScreen() {
                             progressBackgroundColor={colors.bgCard}
                         />
                     }
-                    contentContainerStyle={styles.listContent}
+                    contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad }]}
                     ListEmptyComponent={
                         sessions.loading ? null : (
                             <View style={styles.emptyState}>

@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../../src/theme/tokens';
 import { useApiData } from '../../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../../src/hooks/useBottomInsetPadding';
 import { fetchApprovals, resolveApproval } from '../../../src/api/client';
 import type { ApprovalRequest } from '../../../src/api/types';
 
@@ -15,6 +16,7 @@ export default function ApprovalDetailScreen() {
     const { approvalId } = useLocalSearchParams<{ approvalId: string }>();
     const router = useRouter();
     const [resolving, setResolving] = useState(false);
+    const bottomPad = useBottomInsetPadding(32);
 
     const approvals = useApiData<{ items: ApprovalRequest[] }>(
         useCallback(() => fetchApprovals(), []),
@@ -56,7 +58,7 @@ export default function ApprovalDetailScreen() {
                     {approval.status.toUpperCase()}
                 </GCStatusChip>} />
 
-            <ScrollView contentContainerStyle={s.content}>
+            <ScrollView contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}>
                 {/* Risk Badge */}
                 <GCCard variant={approval.riskLevel === 'danger' || approval.riskLevel === 'nuclear' ? 'critical' : 'default'}>
                     <View style={s.riskRow}>

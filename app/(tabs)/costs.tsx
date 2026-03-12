@@ -11,6 +11,7 @@ import {
 } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchChatSessions, fetchDashboard } from '../../src/api/client';
 import type { ChatSessionRecord, DashboardState } from '../../src/api/types';
 
@@ -48,6 +49,7 @@ function CostRingCard({ label, value, total, color }: {
 
 export default function CostScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
 
     const dashboard = useApiData<DashboardState>(
         useCallback(() => fetchDashboard(), []),
@@ -95,7 +97,7 @@ export default function CostScreen() {
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
             <ScrollView
-                contentContainerStyle={s.content}
+                contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}
                 refreshControl={
                     <RefreshControl
                         refreshing={dashboard.refreshing || sessions.refreshing}

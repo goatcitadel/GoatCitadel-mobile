@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCStatusChip } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { useLayout } from '../../src/hooks/useLayout';
 import { fetchAgents } from '../../src/api/client';
 import type { AgentProfileRecord } from '../../src/api/types';
@@ -23,6 +24,7 @@ const GOAT_COLORS: Record<string, string> = {
 
 export default function HerdScreen() {
     const { isTablet } = useLayout();
+    const bottomPad = useBottomInsetPadding(32);
     const agents = useApiData<{ items: AgentProfileRecord[] }>(
         useCallback(() => fetchAgents(), []),
         { pollMs: 15000 },
@@ -40,7 +42,7 @@ export default function HerdScreen() {
                 renderItem={({ item }) => <AgentCard agent={item} />}
                 refreshControl={<RefreshControl refreshing={agents.refreshing} onRefresh={agents.refresh}
                     tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />}
-                contentContainerStyle={s.list}
+                contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                 ListEmptyComponent={agents.loading ? null : (
                     <View style={s.empty}>
                         <Ionicons name="people-outline" size={48} color={colors.textDim} />

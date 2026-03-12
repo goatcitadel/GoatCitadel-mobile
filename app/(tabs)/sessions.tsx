@@ -8,12 +8,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, GCStatCard } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchChatSessions } from '../../src/api/client';
 import type { ChatSessionRecord } from '../../src/api/types';
 
 export default function SessionsScreen() {
     const router = useRouter();
     const [search, setSearch] = useState('');
+    const bottomPad = useBottomInsetPadding(32);
     const sessions = useApiData<{ items: ChatSessionRecord[] }>(
         useCallback(() => fetchChatSessions(), []),
         { pollMs: 15000 },
@@ -69,7 +71,7 @@ export default function SessionsScreen() {
                     <RefreshControl refreshing={sessions.refreshing} onRefresh={sessions.refresh}
                         tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />
                 }
-                contentContainerStyle={s.list}
+                contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                 ListEmptyComponent={
                     <View style={s.empty}>
                         <Text style={s.emptyText}>{sessions.error || 'No sessions found.'}</Text>

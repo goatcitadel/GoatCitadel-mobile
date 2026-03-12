@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { useLayout } from '../../src/hooks/useLayout';
 
 interface MenuItem {
@@ -36,19 +37,26 @@ const MENU: MenuItem[] = [
 export default function MoreScreen() {
     const router = useRouter();
     const { isTablet } = useLayout();
+    const bottomPad = useBottomInsetPadding(32);
+    const useListLayout = !isTablet;
     return (
         <View style={s.safe} >
             <GCHeader eyebrow="GoatCitadel" title="More" subtitle="Additional surfaces and configuration" />
-            <ScrollView contentContainerStyle={[s.grid, isTablet && s.gridTablet]}>
+            <ScrollView contentContainerStyle={[s.grid, isTablet && s.gridTablet, { paddingBottom: bottomPad }]}>
                 {MENU.map((item) => (
                     <Pressable key={item.label}
-                        style={({ pressed }) => [s.tile, pressed && s.tilePressed]}
+                        style={({ pressed }) => [s.tile, useListLayout && s.tilePhone, pressed && s.tilePressed]}
                         onPress={() => router.push(item.route as any)}>
-                        <View style={[s.iconCircle, { borderColor: item.color + '44' }]}>
+                        <View style={[s.iconCircle, useListLayout && s.iconCirclePhone, { borderColor: item.color + '44' }]}>
                             <Ionicons name={item.icon} size={22} color={item.color} />
                         </View>
-                        <Text style={s.tileLabel}>{item.label}</Text>
-                        <Text style={s.tileDesc}>{item.desc}</Text>
+                        <View style={s.tileBody}>
+                            <Text style={[s.tileLabel, useListLayout && s.tileLabelPhone]}>{item.label}</Text>
+                            <Text style={s.tileDesc}>{item.desc}</Text>
+                        </View>
+                        {useListLayout ? (
+                            <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
+                        ) : null}
                     </Pressable>
                 ))}
             </ScrollView>
@@ -68,12 +76,29 @@ const s = StyleSheet.create({
         borderWidth: 1, borderColor: colors.borderCyan, padding: spacing.lg,
         minHeight: 110, overflow: 'hidden',
     },
+    tilePhone: {
+        width: '100%',
+        minHeight: 84,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+    },
     tilePressed: { opacity: 0.7, backgroundColor: colors.bgPanelSolid },
     iconCircle: {
         width: 40, height: 40, borderRadius: 20, borderWidth: 1.5,
         alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm,
         backgroundColor: 'rgba(84,221,255,0.04)',
     },
-    tileLabel: { ...typography.displaySm, color: colors.textPrimary, textTransform: 'uppercase' },
+    iconCirclePhone: {
+        marginBottom: 0,
+        flexShrink: 0,
+    },
+    tileBody: { flex: 1 },
+    tileLabel: { ...typography.displaySm, color: colors.textPrimary },
+    tileLabelPhone: {
+        fontSize: 18,
+        lineHeight: 22,
+        letterSpacing: 0.2,
+    },
     tileDesc: { ...typography.caption, color: colors.textDim, marginTop: 2 },
 });

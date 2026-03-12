@@ -11,6 +11,7 @@ import {
 } from '../../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../../src/theme/tokens';
 import { useApiData } from '../../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../../src/hooks/useBottomInsetPadding';
 import { fetchAgents } from '../../../src/api/client';
 import type { AgentProfileRecord } from '../../../src/api/types';
 
@@ -27,6 +28,7 @@ export default function AgentDetailScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<{ agentId: string }>();
     const agentId = params.agentId;
+    const bottomPad = useBottomInsetPadding(32);
 
     const agents = useApiData<{ items: AgentProfileRecord[] }>(
         useCallback(() => fetchAgents(), []),
@@ -61,7 +63,7 @@ export default function AgentDetailScreen() {
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
             <ScrollView
-                contentContainerStyle={s.content}
+                contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}
                 refreshControl={
                     <RefreshControl
                         refreshing={agents.refreshing} onRefresh={agents.refresh}

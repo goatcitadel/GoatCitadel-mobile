@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, PulseDot } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { fetchDashboard } from '../../src/api/client';
 import type { DashboardState, RealtimeEvent } from '../../src/api/types';
 import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
@@ -47,6 +48,7 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 
 export default function LogsScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const [filter, setFilter] = useState<LogLevel>('all');
     const [autoScroll, setAutoScroll] = useState(true);
     const listRef = useRef<any>(null);
@@ -146,7 +148,7 @@ export default function LogsScreen() {
                             progressBackgroundColor={colors.bgCard}
                         />
                     }
-                    contentContainerStyle={s.list}
+                    contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                     ListEmptyComponent={
                         <View style={s.empty}>
                             <Ionicons name="terminal-outline" size={48} color={colors.textDim} />

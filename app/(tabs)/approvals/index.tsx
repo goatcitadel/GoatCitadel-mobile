@@ -10,10 +10,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCStatusChip } from '../../../src/components/ui';
 import { colors, spacing, typography } from '../../../src/theme/tokens';
 import { useApiData } from '../../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../../src/hooks/useBottomInsetPadding';
 import { fetchApprovals, resolveApproval } from '../../../src/api/client';
 import type { ApprovalRequest } from '../../../src/api/types';
 export default function ApprovalListScreen() {
     const router = useRouter();
+    const bottomPad = useBottomInsetPadding(32);
     const approvals = useApiData<{ items: ApprovalRequest[] }>(
         useCallback(() => fetchApprovals(), []),
         { pollMs: 5000 },
@@ -36,7 +38,7 @@ export default function ApprovalListScreen() {
                 )}
                 refreshControl={<RefreshControl refreshing={approvals.refreshing} onRefresh={approvals.refresh}
                     tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />}
-                contentContainerStyle={s.list}
+                contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
                 ListEmptyComponent={
                     approvals.loading ? null : (
                         <View style={s.empty}>
