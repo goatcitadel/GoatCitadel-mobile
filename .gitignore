@@ -39,3 +39,10 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local-only artifacts
+GoatCitadel.apk
+.claude/
+.codex-agent-send-snippet.txt
+shots.js
+shots2.js
