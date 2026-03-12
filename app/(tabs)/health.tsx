@@ -2,7 +2,7 @@
  * GoatCitadel Mobile — Health Monitor Screen
  * Real-time system health dashboard with vitals, uptime, and connectivity.
  */
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,8 +12,10 @@ import {
 import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
-import { fetchSystemVitals, preflightGatewayAccess } from '../../src/api/client';
+import { fetchSystemVitals } from '../../src/api/client';
 import type { SystemVitals } from '../../src/api/types';
+import { useGatewayAccess } from '../../src/context/GatewayAccessContext';
+import { gatewayShellAccessToneToChipTone } from '../../src/features/gateway/accessState';
 
 /** Animated ring gauge component */
 function GaugeRing({ value, max, label, color, unit }: {
@@ -53,33 +55,19 @@ function formatUptime(seconds: number): string {
 export default function HealthScreen() {
     const router = useRouter();
     const bottomPad = useBottomInsetPadding(32);
-    const [gatewayStatus, setGatewayStatus] = useState<'checking' | 'online' | 'auth-required' | 'misconfigured' | 'offline'>('checking');
-    const [lastCheck, setLastCheck] = useState<Date | null>(null);
+    const { shellState, refreshAccess, busy } = useGatewayAccess();
+    const statusPulseColor = shellState.tone === 'success'
+        ? colors.success
+        : shellState.tone === 'warning'
+            ? colors.ember
+            : shellState.tone === 'muted'
+                ? colors.textDim
+                : colors.crimson;
 
     const vitals = useApiData<SystemVitals>(
         useCallback(() => fetchSystemVitals(), []),
         { pollMs: 10000 },
     );
-
-    // Gateway health check
-    useEffect(() => {
-        const check = async () => {
-            const result = await preflightGatewayAccess();
-            if (result.status === 'ready') {
-                setGatewayStatus('online');
-            } else if (result.status === 'needs-auth') {
-                setGatewayStatus('auth-required');
-            } else if (result.status === 'misconfigured') {
-                setGatewayStatus('misconfigured');
-            } else {
-                setGatewayStatus('offline');
-            }
-            setLastCheck(new Date());
-        };
-        check();
-        const interval = setInterval(check, 15000);
-        return () => clearInterval(interval);
-    }, []);
 
     const v = vitals.data;
     return (
@@ -105,34 +93,29 @@ export default function HealthScreen() {
                     <GCCard style={s.section}>
                         <View style={s.statusRow}>
                             <PulseDot
-                                color={
-                                    gatewayStatus === 'online'
-                                        ? colors.success
-                                        : gatewayStatus === 'auth-required'
-                                            ? colors.ember
-                                            : colors.crimson
-                                }
+                                color={statusPulseColor}
                                 size={8}
                             />
                             <View style={s.statusInfo}>
                                 <Text style={s.statusTitle}>Gateway Connection</Text>
                                 <Text style={s.statusSubtitle}>
-                                    {lastCheck ? `Last checked: ${lastCheck.toLocaleTimeString()}` : 'Checking...'}
+                                    {shellState.message}
                                 </Text>
                             </View>
                             <GCStatusChip
-                                tone={
-                                    gatewayStatus === 'online'
-                                        ? 'success'
-                                        : gatewayStatus === 'auth-required'
-                                            ? 'warning'
-                                            : gatewayStatus === 'offline' || gatewayStatus === 'misconfigured'
-                                                ? 'critical'
-                                                : 'muted'
-                                }
+                                tone={gatewayShellAccessToneToChipTone(shellState.tone)}
                             >
-                                {gatewayStatus === 'auth-required' ? 'AUTH REQUIRED' : gatewayStatus.toUpperCase()}
+                                {shellState.status === 'degraded-live-updates' ? 'LIVE DEGRADED' : shellState.label.toUpperCase()}
                             </GCStatusChip>
+                        </View>
+                        <Text style={s.statusSubtitle}>Next: {shellState.nextStep}</Text>
+                        <View style={s.statusActions}>
+                            <GCButton
+                                title={shellState.canOpenLogin ? 'Open Login Gate' : busy ? 'Checking...' : 'Retry Gateway Check'}
+                                onPress={() => shellState.canOpenLogin ? router.push('/login') : void refreshAccess()}
+                                variant={shellState.canOpenLogin ? 'secondary' : 'ghost'}
+                                size="sm"
+                            />
                         </View>
                     </GCCard>
                 </FadeIn>
@@ -269,6 +252,7 @@ const s = StyleSheet.create({
     statusInfo: { flex: 1 },
     statusTitle: { ...typography.bodyMd, color: colors.textPrimary, fontWeight: '600' },
     statusSubtitle: { ...typography.caption, color: colors.textDim },
+    statusActions: { marginTop: spacing.sm },
 
     infoGrid: { gap: 0 },
     infoRow: {

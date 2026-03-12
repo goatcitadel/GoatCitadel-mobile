@@ -57,6 +57,26 @@ export type ChatTurnBranchKind = 'append' | 'retry' | 'edit';
 export type ChatDelegationStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 export type ChatDelegationRunStatus = 'running' | 'completed' | 'failed' | 'partial';
 export type ChatOrchestrationVisibility = 'hidden' | 'summarized' | 'expandable' | 'explicit';
+export type ChatSpecialistCandidateStatus =
+    | 'suggested'
+    | 'drafted'
+    | 'disabled'
+    | 'approved'
+    | 'active'
+    | 'retired';
+export type ChatSpecialistCandidateRoutingMode =
+    | 'disabled'
+    | 'manual_only'
+    | 'strong_match_only';
+export type ChatSpecialistCandidateSource =
+    | 'manual'
+    | 'runtime_gap'
+    | 'replay';
+export type ChatSpecialistCandidateEvidenceKind =
+    | 'role_gap'
+    | 'tool_gap'
+    | 'skill_gap'
+    | 'successful_workaround';
 
 export interface ChatMessageRecord {
     messageId: string;
@@ -100,11 +120,153 @@ export interface ChatCitationRecord {
     sourceType?: 'web' | 'file' | 'tool';
 }
 
+export type ChatTurnLifecycleStatus =
+    | 'queued'
+    | 'running'
+    | 'waiting_for_tool'
+    | 'waiting_for_approval'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
+
+export type ChatTurnFailureClass =
+    | 'provider_timeout'
+    | 'network_interrupted'
+    | 'tool_blocked'
+    | 'tool_failed'
+    | 'auth_required'
+    | 'budget_exceeded'
+    | 'approval_required'
+    | 'unknown';
+
+export interface ChatTurnFailureRecord {
+    failureClass: ChatTurnFailureClass;
+    message: string;
+    retryable?: boolean;
+}
+
+export interface ChatSpecialistCandidateEvidenceRecord {
+    evidenceId: string;
+    kind: ChatSpecialistCandidateEvidenceKind;
+    summary: string;
+    turnId?: string;
+    runId?: string;
+    toolName?: string;
+    skillRef?: string;
+    confidence?: number;
+}
+
+export interface ChatSpecialistCandidateRoutingHints {
+    preferredModes: ChatMode[];
+    objectiveKeywords?: string[];
+    requiresProjectBinding?: boolean;
+    maxInvocationsPerRun?: number;
+}
+
+export interface ChatSpecialistCandidateRecord {
+    candidateId: string;
+    workspaceId?: string;
+    sessionId: string;
+    leadTurnId?: string;
+    leadRunId?: string;
+    title: string;
+    role: string;
+    summary: string;
+    reason: string;
+    source: ChatSpecialistCandidateSource;
+    status: ChatSpecialistCandidateStatus;
+    routingMode: ChatSpecialistCandidateRoutingMode;
+    confidence: number;
+    requiresApproval: boolean;
+    suggestedTools?: string[];
+    suggestedSkills?: string[];
+    routingHints: ChatSpecialistCandidateRoutingHints;
+    evidence: ChatSpecialistCandidateEvidenceRecord[];
+    createdAt: string;
+    updatedAt: string;
+    activatedAt?: string;
+    retiredAt?: string;
+}
+
+export interface ChatSpecialistCandidateSuggestionRecord {
+    candidateId: string;
+    title: string;
+    role: string;
+    summary: string;
+    reason: string;
+    source: ChatSpecialistCandidateSource;
+    confidence: number;
+    suggestedStatus: Extract<ChatSpecialistCandidateStatus, 'suggested' | 'drafted' | 'disabled'>;
+    suggestedRoutingMode: ChatSpecialistCandidateRoutingMode;
+    requiresApproval: true;
+    suggestedTools?: string[];
+    suggestedSkills?: string[];
+    routingHints: ChatSpecialistCandidateRoutingHints;
+    evidence: ChatSpecialistCandidateEvidenceRecord[];
+}
+
+export interface ChatSpecialistCandidateCreateInput {
+    leadTurnId?: string;
+    leadRunId?: string;
+    title: string;
+    role: string;
+    summary: string;
+    reason: string;
+    source: ChatSpecialistCandidateSource;
+    status?: ChatSpecialistCandidateStatus;
+    routingMode?: ChatSpecialistCandidateRoutingMode;
+    confidence: number;
+    requiresApproval?: boolean;
+    suggestedTools?: string[];
+    suggestedSkills?: string[];
+    routingHints: ChatSpecialistCandidateRoutingHints;
+    evidence: ChatSpecialistCandidateEvidenceRecord[];
+}
+
+export interface ChatSpecialistCandidatePatchInput {
+    title?: string;
+    summary?: string;
+    reason?: string;
+    status?: ChatSpecialistCandidateStatus;
+    routingMode?: ChatSpecialistCandidateRoutingMode;
+    confidence?: number;
+    suggestedTools?: string[];
+    suggestedSkills?: string[];
+    routingHints?: ChatSpecialistCandidateRoutingHints;
+    evidence?: ChatSpecialistCandidateEvidenceRecord[];
+}
+
+export interface ChatOrchestrationSpecialistSelection {
+    candidateId: string;
+    title: string;
+    role: string;
+    summary: string;
+    confidence: number;
+    routingMode: ChatSpecialistCandidateRoutingMode;
+    matchReason: string;
+}
+
+export interface ChatOrchestrationRouteDecision {
+    templateId?: string;
+    templateLabel?: string;
+    rationale: string;
+    selectedProviders: Array<{
+        role: string;
+        providerId?: string;
+        model?: string;
+        reason: string;
+    }>;
+    specialistCandidates?: ChatOrchestrationSpecialistSelection[];
+}
+
 export interface ChatOrchestrationStepSummary {
     stepId: string;
     role: string;
     index: number;
     status: ChatDelegationStepStatus;
+    specialistCandidateId?: string;
+    specialistTitle?: string;
+    specialistRole?: string;
     providerId?: string;
     model?: string;
     startedAt: string;
@@ -122,6 +284,7 @@ export interface ChatOrchestrationSummary {
     modePolicy: ChatMode;
     visibility: ChatOrchestrationVisibility;
     finalSummary?: string;
+    routeDecision?: ChatOrchestrationRouteDecision;
     steps: ChatOrchestrationStepSummary[];
 }
 
@@ -131,7 +294,8 @@ export interface ChatTurnTraceRecord {
     userMessageId: string;
     parentTurnId?: string;
     branchKind: ChatTurnBranchKind;
-    status: 'running' | 'completed' | 'failed' | 'approval_required';
+    status: ChatTurnLifecycleStatus;
+    failure?: ChatTurnFailureRecord;
     mode: ChatMode;
     model?: string;
     startedAt: string;
@@ -142,8 +306,15 @@ export interface ChatTurnTraceRecord {
         effectiveProviderId?: string;
         effectiveModel?: string;
         fallbackUsed?: boolean;
+        liveDataIntent?: boolean;
+        fallbackReason?: string;
+        primaryProviderId?: string;
+        primaryModel?: string;
+        fallbackProviderId?: string;
+        fallbackModel?: string;
     };
     orchestration?: ChatOrchestrationSummary;
+    specialistCandidateSuggestions?: ChatSpecialistCandidateSuggestionRecord[];
 }
 
 export interface ChatThreadTurnBranchRecord {
@@ -206,6 +377,13 @@ export interface ChatSendMessageResponse {
     trace?: ChatTurnTraceRecord;
     citations?: ChatCitationRecord[];
     routing?: ChatTurnTraceRecord['routing'];
+}
+
+export interface ChatCancelTurnResponse {
+    sessionId: string;
+    turnId: string;
+    cancelled: boolean;
+    trace: ChatTurnTraceRecord;
 }
 
 // ─── Streaming ───────────────────────────────────

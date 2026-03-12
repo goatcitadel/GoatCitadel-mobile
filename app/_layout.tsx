@@ -16,6 +16,7 @@ import { ToastProvider } from '../src/context/ToastContext';
 import { NotificationProvider } from '../src/context/NotificationContext';
 import { QuickCommandProvider } from '../src/context/QuickCommandContext';
 import { QuickCommandPalette } from '../src/components/ui/QuickCommandPalette';
+import { GatewayAccessProvider } from '../src/context/GatewayAccessContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -48,14 +49,16 @@ export default function RootLayout() {
     return (
         <GestureHandlerRootView style={styles.root}>
             <ToastProvider>
-                <NotificationProvider>
-                    <QuickCommandProvider>
-                        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent={true} />
-                        {isInApp ? <ConnectionBar /> : null}
-                        <Slot />
-                        <QuickCommandPalette />
-                    </QuickCommandProvider>
-                </NotificationProvider>
+                <GatewayAccessProvider>
+                    <NotificationProvider>
+                        <QuickCommandProvider>
+                            <StatusBar barStyle="light-content" backgroundColor="transparent" translucent={true} />
+                            {isInApp ? <ConnectionBar /> : null}
+                            <Slot />
+                            <QuickCommandPalette />
+                        </QuickCommandProvider>
+                    </NotificationProvider>
+                </GatewayAccessProvider>
             </ToastProvider>
         </GestureHandlerRootView>
     );

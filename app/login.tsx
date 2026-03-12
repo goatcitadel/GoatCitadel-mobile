@@ -29,6 +29,8 @@ import type {
     GatewayAccessPreflightResult,
     GatewayAuthMode,
 } from '../src/api/types';
+import { useGatewayAccess } from '../src/context/GatewayAccessContext';
+import { deriveGatewayShellAccessState } from '../src/features/gateway/accessState';
 
 const STORE_KEY_URL = 'gc_gateway_url';
 const STORE_KEY_TOKEN = 'gc_auth_token';
@@ -48,6 +50,7 @@ type PendingDeviceApprovalRequest = DeviceAccessRequestCreateResponse & {
 export default function LoginScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { setAccessResult, reportAuthExpired } = useGatewayAccess();
     const [url, setUrl] = useState('http://127.0.0.1:8787');
     const [token, setToken] = useState('');
     const [showToken, setShowToken] = useState(false);
@@ -67,6 +70,7 @@ export default function LoginScreen() {
     const formOpacity = useRef(new Animated.Value(0)).current;
 
     const approvalPending = pendingDeviceApproval?.status === 'pending';
+    const shellAccess = useMemo(() => deriveGatewayShellAccessState(access), [access]);
     const authHint = useMemo(() => {
         if (access.status !== 'needs-auth') {
             return 'Direct token access still works, but device approval is the safest way to connect this phone without copying long-lived credentials.';
@@ -222,6 +226,7 @@ export default function LoginScreen() {
 
         const result = await preflightGatewayAccess();
         setAccess(result);
+        setAccessResult(result);
 
         if (result.status === 'ready' && navigateOnReady) {
             await completeSuccessfulConnect(trimmedUrl, trimmedToken);
@@ -268,6 +273,7 @@ export default function LoginScreen() {
                 authMode: access.authMode,
                 message: 'Device approval requested. Open Gatehouse on another authenticated GoatCitadel session to approve this phone.',
             });
+            reportAuthExpired('Device approval requested. Open Gatehouse on another authenticated GoatCitadel session to approve this phone.');
             if (Platform.OS !== 'web') {
                 await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
@@ -314,14 +320,15 @@ export default function LoginScreen() {
 
                                 <View style={s.statusCard}>
                                     <View style={s.statusHeader}>
-                                        <Text style={s.statusLabel}>{resolveStatusLabel(access.status)}</Text>
+                                        <Text style={s.statusLabel}>{shellAccess.label}</Text>
                                         <Ionicons
-                                            name={resolveStatusIcon(access.status)}
+                                            name={resolveStatusIcon(shellAccess.status)}
                                             size={16}
-                                            color={resolveStatusColor(access.status)}
+                                            color={resolveStatusColor(shellAccess.status)}
                                         />
                                     </View>
-                                    <Text style={s.statusMessage}>{access.message}</Text>
+                                    <Text style={s.statusMessage}>{shellAccess.message}</Text>
+                                    <Text style={s.statusDetail}>Next: {shellAccess.nextStep}</Text>
                                     {access.checks?.length ? (
                                         <View style={s.checkList}>
                                             {access.checks.map((check) => (
@@ -494,7 +501,7 @@ export default function LoginScreen() {
     );
 }
 
-function resolveStatusLabel(status: AccessView['status']): string {
+function resolveStatusLabel(status: AccessView['status'] | 'degraded-live-updates'): string {
     if (status === 'checking') {
         return 'Checking gateway';
     }
@@ -503,6 +510,9 @@ function resolveStatusLabel(status: AccessView['status']): string {
     }
     if (status === 'needs-auth') {
         return 'Auth required';
+    }
+    if (status === 'degraded-live-updates') {
+        return 'Live updates degraded';
     }
     if (status === 'misconfigured') {
         return 'Gateway misconfigured';
@@ -513,12 +523,15 @@ function resolveStatusLabel(status: AccessView['status']): string {
     return 'Waiting for setup';
 }
 
-function resolveStatusIcon(status: AccessView['status']): keyof typeof Ionicons.glyphMap {
+function resolveStatusIcon(status: AccessView['status'] | 'degraded-live-updates'): keyof typeof Ionicons.glyphMap {
     if (status === 'ready') {
         return 'checkmark-circle';
     }
     if (status === 'needs-auth') {
         return 'lock-closed';
+    }
+    if (status === 'degraded-live-updates') {
+        return 'sync';
     }
     if (status === 'misconfigured') {
         return 'warning';
@@ -532,11 +545,14 @@ function resolveStatusIcon(status: AccessView['status']): keyof typeof Ionicons.
     return 'information-circle';
 }
 
-function resolveStatusColor(status: AccessView['status']): string {
+function resolveStatusColor(status: AccessView['status'] | 'degraded-live-updates'): string {
     if (status === 'ready') {
         return colors.success;
     }
     if (status === 'needs-auth') {
+        return colors.ember;
+    }
+    if (status === 'degraded-live-updates') {
         return colors.ember;
     }
     if (status === 'misconfigured' || status === 'unreachable') {

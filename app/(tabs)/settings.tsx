@@ -12,11 +12,17 @@ import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../src/components/u
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
-import { fetchRuntimeSettings, patchSettings, preflightGatewayAccess } from '../../src/api/client';
+import { fetchRuntimeSettings, patchSettings } from '../../src/api/client';
 import { setGatewayUrl, getGatewayUrl, setAuthToken, getAuthToken } from '../../src/api/client';
 import { deleteSecureItem, setSecureItem } from '../../src/utils/storage';
 import type { RuntimeSettings } from '../../src/api/types';
 import { useToast } from '../../src/context/ToastContext';
+import { useGatewayAccess } from '../../src/context/GatewayAccessContext';
+import {
+    deriveGatewayShellAccessState,
+    formatGatewayAccessDiagnostics,
+    gatewayShellAccessToneToChipTone,
+} from '../../src/features/gateway/accessState';
 
 const TOOL_PROFILES = ['minimal', 'standard', 'coding', 'ops', 'research', 'danger'] as const;
 const BUDGET_MODES = ['saver', 'balanced', 'power'] as const;
@@ -25,9 +31,9 @@ export default function SettingsScreen() {
     const router = useRouter();
     const bottomPad = useBottomInsetPadding(32);
     const { showToast } = useToast();
+    const { shellState, refreshAccess } = useGatewayAccess();
     const [gwUrl, setGwUrl] = useState(getGatewayUrl());
     const [token, setToken] = useState(getAuthToken() || '');
-    const [gwStatus, setGwStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
     const [saving, setSaving] = useState(false);
     const appVersion = Constants.expoConfig?.version ?? 'dev';
 
@@ -40,9 +46,9 @@ export default function SettingsScreen() {
         const trimmedToken = token.trim();
         setGatewayUrl(trimmedUrl);
         setAuthToken(trimmedToken || undefined);
-        const result = await preflightGatewayAccess();
+        const result = await refreshAccess();
+        const nextShellState = deriveGatewayShellAccessState(result);
         const ok = result.status === 'ready';
-        setGwStatus(ok ? 'online' : 'offline');
         if (ok) {
             await setSecureItem('gc_gateway_url', gwUrl);
             if (trimmedToken) {
@@ -53,15 +59,23 @@ export default function SettingsScreen() {
             showToast({ message: `Connected to ${gwUrl}`, type: 'success' });
             settings.refresh();
         } else {
+            const diagnostics = formatGatewayAccessDiagnostics(result);
+            const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [
+                { text: 'Stay Here', style: 'cancel' },
+            ];
+            if (diagnostics) {
+                buttons.push({
+                    text: 'Show Diagnostics',
+                    onPress: () => Alert.alert('Gateway diagnostics', diagnostics),
+                });
+            }
+            if (nextShellState.canOpenLogin) {
+                buttons.push({ text: 'Open Login Gate', onPress: () => router.push('/login') });
+            }
             Alert.alert(
-                result.status === 'needs-auth' ? 'Auth Required' : 'Connection Failed',
-                result.status === 'needs-auth'
-                    ? `${result.message} Open the login gate to request device approval or enter a valid token.`
-                    : `${result.message}${result.healthDetail ? `\n\n${result.healthDetail}` : ''}`,
-                [
-                    { text: 'Stay Here', style: 'cancel' },
-                    { text: 'Open Login Gate', onPress: () => router.push('/login') },
-                ],
+                nextShellState.label,
+                `${nextShellState.message}\n\nNext: ${nextShellState.nextStep}`,
+                buttons,
             );
         }
     };
@@ -125,8 +139,8 @@ export default function SettingsScreen() {
                         <TextInput style={s.input} value={gwUrl} onChangeText={setGwUrl}
                             placeholder="http://127.0.0.1:8787" placeholderTextColor={colors.textDim}
                             autoCapitalize="none" autoCorrect={false} keyboardType="url" />
-                        <GCStatusChip tone={gwStatus === 'online' ? 'success' : gwStatus === 'offline' ? 'critical' : 'muted'}>
-                            {gwStatus.toUpperCase()}
+                        <GCStatusChip tone={gatewayShellAccessToneToChipTone(shellState.tone)}>
+                            {shellState.status === 'degraded-live-updates' ? 'LIVE DEGRADED' : shellState.label.toUpperCase()}
                         </GCStatusChip>
                     </View>
                     

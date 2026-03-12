@@ -14,6 +14,7 @@ import {
     ScrollView,
     Image,
     RefreshControl,
+    AppState,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -25,16 +26,21 @@ import * as Speech from 'expo-speech';
 import { FlashList } from '@shopify/flash-list';
 import { useToast } from '../../../src/context/ToastContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
 import { colors, spacing, typography, radii } from '../../../src/theme/tokens';
 import { TypingIndicator, SkeletonBlock } from '../../../src/components/ui';
 import { useApiData } from '../../../src/hooks/useApiData';
 import {
+    cancelChatTurn,
+    createChatSpecialistCandidate,
+    fetchChatSpecialistCandidates,
     fetchChatThread,
     fetchChatPrefs,
     fetchRuntimeSettings,
+    isGatewayAuthFailure,
+    updateChatSpecialistCandidate,
     uploadChatAttachment,
 } from '../../../src/api/client';
 import { streamChatResponse } from '../../../src/api/streaming';
@@ -43,9 +49,14 @@ import type {
     ChatInputPart,
     ChatMemoryMode,
     ChatThinkingLevel,
+    ChatTurnLifecycleStatus,
+    ChatTurnTraceRecord,
     ChatThreadResponse,
     ChatThreadTurnRecord,
     ChatMode,
+    ChatSpecialistCandidatePatchInput,
+    ChatSpecialistCandidateRecord,
+    ChatSpecialistCandidateSuggestionRecord,
     ChatToolRunRecord,
     ChatWebMode,
     ProviderRecord,
@@ -66,12 +77,14 @@ import {
     type QueuedChatMessage,
 } from '../../../src/features/chat/chatRuntimeStore';
 import { resolveCurrentLocationContext } from '../../../src/features/chat/mobileContext';
+import { useGatewayAccess } from '../../../src/context/GatewayAccessContext';
 
 export default function ChatThreadScreen() {
     const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
     const router = useRouter();
     const flatListRef = useRef<any>(null);
     const { showToast } = useToast();
+    const { shellState, refreshAccess, reportAuthExpired } = useGatewayAccess();
 
     const [composerText, setComposerText] = useState('');
     const [mode, setMode] = useState<ChatMode>('chat');
@@ -84,6 +97,7 @@ export default function ChatThreadScreen() {
     const [thinkingLevel, setThinkingLevel] = useState<ChatThinkingLevel>('standard');
     const [selectedImage, setSelectedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
+    const [specialistActionTargetId, setSpecialistActionTargetId] = useState<string | null>(null);
     const runtime = useChatSessionRuntime(sessionId);
 
     // P0-4: Clean up active recording on unmount to avoid leaked microphone.
@@ -105,6 +119,13 @@ export default function ChatThreadScreen() {
         { enabled: !!sessionId },
     );
 
+    const specialistCandidatesState = useApiData<{ items: ChatSpecialistCandidateRecord[] }>(
+        useCallback(() => fetchChatSpecialistCandidates(sessionId!), [sessionId]),
+        { enabled: !!sessionId },
+    );
+    const reloadSpecialistCandidates = specialistCandidatesState.reload;
+    const refreshSpecialistCandidates = specialistCandidatesState.refresh;
+
     // Hydrate session prefs from the backend so follow-ups match other surfaces.
     useEffect(() => {
         if (!sessionId) return;
@@ -122,13 +143,41 @@ export default function ChatThreadScreen() {
     }, [sessionId]);
 
     const turns = thread.data?.turns ?? [];
-    const isServerRunning = turns.some((turn) => turn.trace.status === 'running');
+    const specialistCandidates = specialistCandidatesState.data?.items ?? [];
+    const visibleSpecialistCandidates = React.useMemo(
+        () => specialistCandidates.filter((item) => item.status !== 'retired'),
+        [specialistCandidates],
+    );
+    const specialistSuggestionMap = React.useMemo(() => {
+        const seen = new Set<string>();
+        const ordered: ChatSpecialistCandidateSuggestionRecord[] = [];
+        for (let index = turns.length - 1; index >= 0; index -= 1) {
+            const turn = turns[index];
+            for (const suggestion of turn.trace.specialistCandidateSuggestions ?? []) {
+                if (seen.has(suggestion.candidateId)) {
+                    continue;
+                }
+                seen.add(suggestion.candidateId);
+                ordered.push(suggestion);
+            }
+        }
+        return ordered;
+    }, [turns]);
+    const specialistCandidateById = React.useMemo(
+        () => new Map(specialistCandidates.map((item) => [item.candidateId, item])),
+        [specialistCandidates],
+    );
+    const shouldShowSpecialistPanel = specialistSuggestionMap.length > 0 || visibleSpecialistCandidates.length > 0;
+    const activeTurn = turns.find((turn) => isActiveChatTurnStatus(turn.trace.status));
+    const activeTurnId = runtime.streamingTurnId ?? activeTurn?.turnId;
+    const isServerRunning = Boolean(activeTurn);
     const isStreaming = Boolean(runtime.activeRequestId);
     const isBusy = isStreaming || isServerRunning;
     const shouldPollThread = isServerRunning && !isStreaming;
     const streamingContent = runtime.streamingContent;
     const activeTools = runtime.activeTools;
     const canSubmitDraft = Boolean(composerText.trim() || selectedImage);
+    const lastResumeRefreshRef = useRef(0);
 
     // Scroll to bottom on new content
     useEffect(() => {
@@ -160,6 +209,20 @@ export default function ChatThreadScreen() {
             void thread.reload();
         }
         return aborted;
+    }, [sessionId, thread.reload]);
+
+    const requestServerCancel = useCallback(async (turnId?: string) => {
+        if (!sessionId || !turnId) {
+            return false;
+        }
+        try {
+            await cancelChatTurn(sessionId, turnId, 'mobile-app');
+            void thread.reload();
+            return true;
+        } catch (error) {
+            console.warn('[chat] failed to cancel turn', error);
+            return false;
+        }
     }, [sessionId, thread.reload]);
 
     const executeQueuedMessage = useCallback(async (item: QueuedChatMessage) => {
@@ -273,6 +336,10 @@ export default function ChatThreadScreen() {
                     }
                     finish();
                     console.warn('[chat] request failed', error);
+                    if (isGatewayAuthFailure(new Error(error))) {
+                        reportAuthExpired('Gateway access expired while this chat turn was running.');
+                        router.push('/login');
+                    }
                     showToast({
                         message: formatChatRequestError(error),
                         type: 'error',
@@ -293,12 +360,67 @@ export default function ChatThreadScreen() {
         } catch (error) {
             setChatSessionAbortHandler(sessionId, undefined);
             clearChatSessionActivity(sessionId);
+            if (isGatewayAuthFailure(error)) {
+                reportAuthExpired('Gateway access expired while preparing this message.');
+                router.push('/login');
+            }
             showToast({
                 message: (error as Error).message || 'Failed to prepare this message.',
                 type: 'error',
             });
         }
-    }, [sessionId, showToast, thread.reload]);
+    }, [reportAuthExpired, router, sessionId, showToast, thread.reload]);
+
+    const resumeForegroundWork = useCallback(() => {
+        if (!sessionId) {
+            return;
+        }
+        const now = Date.now();
+        if (now - lastResumeRefreshRef.current < 1000) {
+            return;
+        }
+        lastResumeRefreshRef.current = now;
+
+        if (shellState.status !== 'ready' && shellState.status !== 'degraded-live-updates') {
+            void refreshAccess({ preserveVisibleState: true });
+        }
+        void reloadSpecialistCandidates();
+        if (isServerRunning || runtime.queuedMessages.length > 0) {
+            void thread.reload();
+        }
+        if (!isBusy) {
+            const nextMessage = takeNextQueuedChatSessionMessage(sessionId);
+            if (nextMessage) {
+                void executeQueuedMessage(nextMessage);
+            }
+        }
+    }, [
+        executeQueuedMessage,
+        isBusy,
+        isServerRunning,
+        refreshAccess,
+        reloadSpecialistCandidates,
+        runtime.queuedMessages.length,
+        sessionId,
+        shellState.status,
+        thread,
+    ]);
+
+    useFocusEffect(useCallback(() => {
+        resumeForegroundWork();
+    }, [resumeForegroundWork]));
+
+    useEffect(() => {
+        const appStateRef = { current: AppState.currentState };
+        const subscription = AppState.addEventListener('change', (nextState) => {
+            const previousState = appStateRef.current;
+            appStateRef.current = nextState;
+            if (previousState !== 'active' && nextState === 'active') {
+                resumeForegroundWork();
+            }
+        });
+        return () => subscription.remove();
+    }, [resumeForegroundWork]);
 
     useEffect(() => {
         if (!sessionId || isBusy) {
@@ -310,6 +432,69 @@ export default function ChatThreadScreen() {
         }
         void executeQueuedMessage(nextMessage);
     }, [executeQueuedMessage, isBusy, runtime.queuedMessages.length, sessionId]);
+
+    const handleRefreshScreen = useCallback(async () => {
+        await Promise.allSettled([
+            thread.refresh(),
+            refreshSpecialistCandidates(),
+        ]);
+    }, [refreshSpecialistCandidates, thread]);
+
+    const handleCreateSpecialistDraft = useCallback(async (
+        suggestion: ChatSpecialistCandidateSuggestionRecord,
+    ) => {
+        if (!sessionId || specialistActionTargetId) {
+            return;
+        }
+        setSpecialistActionTargetId(suggestion.candidateId);
+        try {
+            const turnId = turns.find((turn) => (
+                (turn.trace.specialistCandidateSuggestions ?? []).some((item) => item.candidateId === suggestion.candidateId)
+            ))?.turnId;
+            await createChatSpecialistCandidate(sessionId, {
+                turnId,
+                suggestion,
+            });
+            await reloadSpecialistCandidates();
+            showToast({
+                message: `Drafted specialist candidate: ${suggestion.title}.`,
+                type: 'success',
+            });
+        } catch (error) {
+            showToast({
+                message: (error as Error).message || 'Failed to draft specialist candidate.',
+                type: 'error',
+            });
+        } finally {
+            setSpecialistActionTargetId(null);
+        }
+    }, [reloadSpecialistCandidates, sessionId, specialistActionTargetId, showToast, turns]);
+
+    const handlePatchSpecialistCandidate = useCallback(async (
+        candidateId: string,
+        patch: ChatSpecialistCandidatePatchInput,
+        successMessage: string,
+    ) => {
+        if (!sessionId || specialistActionTargetId) {
+            return;
+        }
+        setSpecialistActionTargetId(candidateId);
+        try {
+            await updateChatSpecialistCandidate(sessionId, candidateId, patch);
+            await reloadSpecialistCandidates();
+            showToast({
+                message: successMessage,
+                type: 'success',
+            });
+        } catch (error) {
+            showToast({
+                message: (error as Error).message || 'Failed to update specialist candidate.',
+                type: 'error',
+            });
+        } finally {
+            setSpecialistActionTargetId(null);
+        }
+    }, [reloadSpecialistCandidates, sessionId, specialistActionTargetId, showToast]);
 
     const queueComposerMessage = useCallback((priority = false) => {
         if (!sessionId || !canSubmitDraft) {
@@ -339,18 +524,31 @@ export default function ChatThreadScreen() {
         setSelectedImage(null);
 
         if (priority) {
+            const turnIdToCancel = activeTurnId;
             const stoppedLocally = stopLocalWait();
-            if (stoppedLocally) {
-                showToast({
-                    message: 'Steer queued next. The current mobile wait was stopped locally.',
-                    type: 'info',
-                });
-            } else if (isBusy) {
-                showToast({
-                    message: 'Steer queued next. It will run as soon as the current turn clears.',
-                    type: 'info',
-                });
-            }
+            void (async () => {
+                const cancelledServer = await requestServerCancel(turnIdToCancel);
+                if (cancelledServer) {
+                    showToast({
+                        message: 'Steer queued next. The active turn was cancelled and your new message moved to the front.',
+                        type: 'info',
+                    });
+                    return;
+                }
+                if (stoppedLocally) {
+                    showToast({
+                        message: 'Steer queued next. The current mobile wait was stopped locally.',
+                        type: 'info',
+                    });
+                    return;
+                }
+                if (isBusy) {
+                    showToast({
+                        message: 'Steer queued next. It will run as soon as the current turn clears.',
+                        type: 'info',
+                    });
+                }
+            })();
             return;
         }
 
@@ -391,19 +589,37 @@ export default function ChatThreadScreen() {
         if (Platform.OS !== 'web') {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
         }
+        const turnIdToCancel = activeTurnId;
         const stopped = stopLocalWait();
-        if (stopped) {
+        void (async () => {
+            const cancelledServer = await requestServerCancel(turnIdToCancel);
+            if (cancelledServer) {
+                showToast({
+                    message: 'Turn cancelled.',
+                    type: 'info',
+                });
+                return;
+            }
+            if (stopped) {
+                showToast({
+                    message: 'Stream stopped. The server turn may still finish in the background.',
+                    type: 'info',
+                });
+                return;
+            }
+            if (isServerRunning) {
+                showToast({
+                    message: 'This turn is still active on the server and could not be cancelled right now.',
+                    type: 'warning',
+                });
+                return;
+            }
             showToast({
-                message: 'Stream stopped. The server turn may still finish in the background.',
-                type: 'info',
-            });
-        } else {
-            showToast({
-                message: 'This turn is still running on the server, so there was no local stream to stop.',
+                message: 'There is no active turn to stop.',
                 type: 'warning',
             });
-        }
-    }, [sessionId, showToast, stopLocalWait]);
+        })();
+    }, [activeTurnId, isServerRunning, requestServerCancel, sessionId, showToast, stopLocalWait]);
 
     const handlePickImage = async () => {
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -561,8 +777,8 @@ export default function ChatThreadScreen() {
                     contentContainerStyle={[styles.threadContent, { paddingBottom: threadBottomPad }]}
                     refreshControl={
                         <RefreshControl
-                            refreshing={thread.refreshing}
-                            onRefresh={thread.refresh}
+                            refreshing={thread.refreshing || specialistCandidatesState.refreshing}
+                            onRefresh={handleRefreshScreen}
                             tintColor={colors.cyan}
                             colors={[colors.cyan]}
                             progressBackgroundColor={colors.bgCard}
@@ -614,7 +830,9 @@ export default function ChatThreadScreen() {
                             ) : isBusy ? (
                                 <View style={styles.thinkingBar}>
                                     <TypingIndicator />
-                                    <Text style={styles.thinkingText}>Thinking…</Text>
+                                    <Text style={styles.thinkingText}>
+                                        {activeTurn ? describeTurnTraceStatus(activeTurn.trace) : 'Thinking…'}
+                                    </Text>
                                 </View>
                             ) : null}
                         </>
@@ -634,6 +852,17 @@ export default function ChatThreadScreen() {
                             </Pressable>
                         ))}
                     </ScrollView>
+                ) : null}
+
+                {shouldShowSpecialistPanel ? (
+                    <SpecialistPanel
+                        suggestions={specialistSuggestionMap}
+                        candidates={visibleSpecialistCandidates}
+                        candidateById={specialistCandidateById}
+                        activeActionId={specialistActionTargetId}
+                        onCreateDraft={handleCreateSpecialistDraft}
+                        onPatchCandidate={handlePatchSpecialistCandidate}
+                    />
                 ) : null}
 
                 {/* Composer */}
@@ -714,7 +943,7 @@ export default function ChatThreadScreen() {
                                     <Text style={styles.queueBtnText}>QUEUE</Text>
                                 </Pressable>
                             </View>
-                        ) : isStreaming ? (
+                        ) : isBusy ? (
                             <Pressable style={styles.stopBtn} onPress={handleStop}>
                                 <Ionicons name="stop-circle" size={28} color={colors.crimson} />
                             </Pressable>
@@ -748,11 +977,160 @@ export default function ChatThreadScreen() {
     );
 }
 
+function SpecialistPanel({
+    suggestions,
+    candidates,
+    candidateById,
+    activeActionId,
+    onCreateDraft,
+    onPatchCandidate,
+}: {
+    suggestions: ChatSpecialistCandidateSuggestionRecord[];
+    candidates: ChatSpecialistCandidateRecord[];
+    candidateById: Map<string, ChatSpecialistCandidateRecord>;
+    activeActionId: string | null;
+    onCreateDraft: (suggestion: ChatSpecialistCandidateSuggestionRecord) => void;
+    onPatchCandidate: (candidateId: string, patch: ChatSpecialistCandidatePatchInput, successMessage: string) => void;
+}) {
+    return (
+        <View style={styles.specialistPanel}>
+            {suggestions.length > 0 ? (
+                <View style={styles.specialistPanelSection}>
+                    <Text style={styles.specialistPanelTitle}>Suggested specialists</Text>
+                    {suggestions.slice(0, 3).map((suggestion) => {
+                        const existing = candidateById.get(suggestion.candidateId);
+                        const busy = activeActionId === suggestion.candidateId;
+                        return (
+                            <View key={suggestion.candidateId} style={styles.specialistCard}>
+                                <View style={styles.specialistCardHeader}>
+                                    <View style={styles.specialistCardCopy}>
+                                        <Text style={styles.specialistCardTitle}>{suggestion.title}</Text>
+                                        <Text style={styles.specialistCardMeta}>
+                                            {suggestion.role} · {formatSpecialistConfidence(suggestion.confidence)}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.specialistStatusBadge}>
+                                        <Text style={styles.specialistStatusBadgeText}>
+                                            {existing ? describeSpecialistStatus(existing.status) : 'new'}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.specialistCardSummary}>{suggestion.summary}</Text>
+                                <Text style={styles.specialistCardReason}>{suggestion.reason}</Text>
+                                <View style={styles.specialistActionRow}>
+                                    {existing ? (
+                                        <Text style={styles.specialistInlineStatus}>
+                                            Session candidate already exists.
+                                        </Text>
+                                    ) : (
+                                        <Pressable
+                                            style={[styles.specialistPrimaryBtn, busy && styles.specialistBtnDisabled]}
+                                            disabled={busy}
+                                            onPress={() => onCreateDraft(suggestion)}
+                                        >
+                                            <Text style={styles.specialistPrimaryBtnText}>
+                                                {busy ? 'Drafting…' : 'Draft specialist'}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+                                </View>
+                            </View>
+                        );
+                    })}
+                </View>
+            ) : null}
+
+            {candidates.length > 0 ? (
+                <View style={styles.specialistPanelSection}>
+                    <Text style={styles.specialistPanelTitle}>Session specialists</Text>
+                    {candidates.slice(0, 6).map((candidate) => {
+                        const busy = activeActionId === candidate.candidateId;
+                        return (
+                            <View key={candidate.candidateId} style={styles.specialistCard}>
+                                <View style={styles.specialistCardHeader}>
+                                    <View style={styles.specialistCardCopy}>
+                                        <Text style={styles.specialistCardTitle}>{candidate.title}</Text>
+                                        <Text style={styles.specialistCardMeta}>
+                                            {candidate.role} · {describeSpecialistRoutingMode(candidate.routingMode)}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.specialistStatusBadge}>
+                                        <Text style={styles.specialistStatusBadgeText}>
+                                            {describeSpecialistStatus(candidate.status)}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.specialistCardSummary}>{candidate.summary}</Text>
+                                <Text style={styles.specialistCardReason}>{candidate.reason}</Text>
+                                <View style={styles.specialistActionRow}>
+                                    {(candidate.status === 'suggested' || candidate.status === 'drafted' || candidate.status === 'disabled') ? (
+                                        <Pressable
+                                            style={[styles.specialistSecondaryBtn, busy && styles.specialistBtnDisabled]}
+                                            disabled={busy}
+                                            onPress={() => onPatchCandidate(
+                                                candidate.candidateId,
+                                                { status: 'approved' },
+                                                `Approved ${candidate.title}.`,
+                                            )}
+                                        >
+                                            <Text style={styles.specialistSecondaryBtnText}>Approve</Text>
+                                        </Pressable>
+                                    ) : null}
+                                    {(candidate.status !== 'active' || candidate.routingMode !== 'strong_match_only') ? (
+                                        <Pressable
+                                            style={[styles.specialistPrimaryBtn, busy && styles.specialistBtnDisabled]}
+                                            disabled={busy}
+                                            onPress={() => onPatchCandidate(
+                                                candidate.candidateId,
+                                                { status: 'active', routingMode: 'strong_match_only' },
+                                                `Activated ${candidate.title} for strong auto-match.`,
+                                            )}
+                                        >
+                                            <Text style={styles.specialistPrimaryBtnText}>Auto-match</Text>
+                                        </Pressable>
+                                    ) : null}
+                                    {(candidate.status !== 'disabled' || candidate.routingMode !== 'disabled') ? (
+                                        <Pressable
+                                            style={[styles.specialistSecondaryBtn, busy && styles.specialistBtnDisabled]}
+                                            disabled={busy}
+                                            onPress={() => onPatchCandidate(
+                                                candidate.candidateId,
+                                                { status: 'disabled', routingMode: 'disabled' },
+                                                `Disabled ${candidate.title}.`,
+                                            )}
+                                        >
+                                            <Text style={styles.specialistSecondaryBtnText}>Disable</Text>
+                                        </Pressable>
+                                    ) : null}
+                                    <Pressable
+                                        style={[styles.specialistDangerBtn, busy && styles.specialistBtnDisabled]}
+                                        disabled={busy}
+                                        onPress={() => onPatchCandidate(
+                                            candidate.candidateId,
+                                            { status: 'retired', routingMode: 'disabled' },
+                                            `Retired ${candidate.title}.`,
+                                        )}
+                                    >
+                                        <Text style={styles.specialistDangerBtnText}>Retire</Text>
+                                    </Pressable>
+                                </View>
+                            </View>
+                        );
+                    })}
+                </View>
+            ) : null}
+        </View>
+    );
+}
+
 /** Single turn: user message + assistant response */
 function TurnCard({ turn }: { turn: ChatThreadTurnRecord }) {
     const [traceExpanded, setTraceExpanded] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const { showToast } = useToast();
+    const showTraceStatusBubble = shouldRenderTraceStatusBubble(turn.trace);
+    const specialistSuggestionCount = turn.trace.specialistCandidateSuggestions?.length ?? 0;
+    const routedSpecialistCount = turn.trace.orchestration?.routeDecision?.specialistCandidates?.length ?? 0;
 
     const handleCopy = async (text: string) => {
         await Clipboard.setStringAsync(text);
@@ -814,7 +1192,7 @@ function TurnCard({ turn }: { turn: ChatThreadTurnRecord }) {
 
                     {/* Actions / Trace Toggle */}
                     <View style={styles.assistantActionBar}>
-                        {(turn.toolRuns.length > 0 || turn.trace.orchestration) ? (
+                        {(turn.toolRuns.length > 0 || turn.trace.orchestration || specialistSuggestionCount > 0) ? (
                             <Pressable
                                 style={styles.traceToggle}
                                 onPress={() => setTraceExpanded(!traceExpanded)}
@@ -830,6 +1208,12 @@ function TurnCard({ turn }: { turn: ChatThreadTurnRecord }) {
                                         : ''}
                                     {turn.trace.orchestration
                                         ? ` · ${turn.trace.orchestration.steps.length} orchestration steps`
+                                        : ''}
+                                    {routedSpecialistCount > 0
+                                        ? ` · ${routedSpecialistCount} active specialist${routedSpecialistCount !== 1 ? 's' : ''}`
+                                        : ''}
+                                    {specialistSuggestionCount > 0
+                                        ? ` · ${specialistSuggestionCount} specialist suggestion${specialistSuggestionCount !== 1 ? 's' : ''}`
                                         : ''}
                                 </Text>
                                 {turn.trace.routing.effectiveModel ? (
@@ -854,13 +1238,50 @@ function TurnCard({ turn }: { turn: ChatThreadTurnRecord }) {
                                     <Text style={styles.orchTitle}>
                                         Orchestration: {turn.trace.orchestration.objective}
                                     </Text>
+                                    {routedSpecialistCount > 0 ? (
+                                        <View style={styles.specialistTraceSection}>
+                                            <Text style={styles.specialistTraceTitle}>Selected specialists</Text>
+                                            {turn.trace.orchestration?.routeDecision?.specialistCandidates?.map((item) => (
+                                                <View key={item.candidateId} style={styles.specialistTraceRow}>
+                                                    <View style={styles.specialistTraceBadge}>
+                                                        <Text style={styles.specialistTraceBadgeText}>{item.role}</Text>
+                                                    </View>
+                                                    <View style={styles.specialistTraceCopy}>
+                                                        <Text style={styles.specialistTraceName}>{item.title}</Text>
+                                                        <Text style={styles.specialistTraceMeta} numberOfLines={2}>
+                                                            {item.matchReason}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            ))}
+                                        </View>
+                                    ) : null}
                                     {turn.trace.orchestration.steps.map((step) => (
                                         <View key={step.stepId} style={styles.orchStep}>
                                             <View style={[styles.orchDot, { backgroundColor: stepColor(step.status) }]} />
                                             <Text style={styles.orchStepText}>
                                                 {step.role} — {step.status}
                                                 {step.durationMs ? ` (${step.durationMs}ms)` : ''}
+                                                {step.specialistTitle ? ` · specialist: ${step.specialistTitle}` : ''}
                                             </Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            ) : null}
+                            {specialistSuggestionCount > 0 ? (
+                                <View style={styles.specialistTraceSection}>
+                                    <Text style={styles.specialistTraceTitle}>Specialist suggestions</Text>
+                                    {turn.trace.specialistCandidateSuggestions?.map((item) => (
+                                        <View key={item.candidateId} style={styles.specialistTraceRow}>
+                                            <View style={styles.specialistTraceBadge}>
+                                                <Text style={styles.specialistTraceBadgeText}>{item.role}</Text>
+                                            </View>
+                                            <View style={styles.specialistTraceCopy}>
+                                                <Text style={styles.specialistTraceName}>{item.title}</Text>
+                                                <Text style={styles.specialistTraceMeta} numberOfLines={2}>
+                                                    {item.summary}
+                                                </Text>
+                                            </View>
                                         </View>
                                     ))}
                                 </View>
@@ -868,6 +1289,20 @@ function TurnCard({ turn }: { turn: ChatThreadTurnRecord }) {
                         </View>
                     ) : null}
                 </Pressable>
+            ) : showTraceStatusBubble ? (
+                <View
+                    style={[
+                        styles.assistantBubble,
+                        styles.traceStatusBubble,
+                        turn.trace.status === 'failed' && styles.traceStatusBubbleFailed,
+                        turn.trace.status === 'cancelled' && styles.traceStatusBubbleCancelled,
+                    ]}
+                >
+                    <Text style={styles.traceStatusTitle}>{describeTurnTraceStatus(turn.trace)}</Text>
+                    {turn.trace.failure?.message ? (
+                        <Text style={styles.traceStatusMessage}>{turn.trace.failure.message}</Text>
+                    ) : null}
+                </View>
             ) : null}
         </View>
     );
@@ -877,7 +1312,11 @@ const MemoizedTurnCard = React.memo(TurnCard, (prev, next) => {
     return prev.turn.turnId === next.turn.turnId &&
         prev.turn.toolRuns.length === next.turn.toolRuns.length &&
         prev.turn.assistantMessage?.content === next.turn.assistantMessage?.content &&
-        prev.turn.trace.status === next.turn.trace.status;
+        prev.turn.trace.status === next.turn.trace.status &&
+        prev.turn.trace.failure?.message === next.turn.trace.failure?.message &&
+        summarizeTraceSpecialistSuggestions(prev.turn.trace) === summarizeTraceSpecialistSuggestions(next.turn.trace) &&
+        summarizeRoutedSpecialists(prev.turn.trace) === summarizeRoutedSpecialists(next.turn.trace) &&
+        summarizeOrchestrationSpecialistSteps(prev.turn.trace) === summarizeOrchestrationSpecialistSteps(next.turn.trace);
 });
 
 function ToolRunRow({ tool }: { tool: ChatToolRunRecord }) {
@@ -983,6 +1422,45 @@ function summarizeQueuedMessage(message: QueuedChatMessage): string {
     return `${normalized.slice(0, 53)}...`;
 }
 
+function formatSpecialistConfidence(confidence: number): string {
+    return `${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}% confidence`;
+}
+
+function describeSpecialistStatus(status: ChatSpecialistCandidateRecord['status']): string {
+    return status.replace(/_/g, ' ');
+}
+
+function describeSpecialistRoutingMode(mode: ChatSpecialistCandidateRecord['routingMode']): string {
+    switch (mode) {
+        case 'disabled':
+            return 'Routing disabled';
+        case 'manual_only':
+            return 'Manual only';
+        case 'strong_match_only':
+            return 'Strong auto-match';
+        default:
+            return mode;
+    }
+}
+
+function summarizeOrchestrationSpecialistSteps(trace: ChatTurnTraceRecord): string {
+    return trace.orchestration?.steps
+        .map((step) => `${step.stepId}:${step.status}:${step.specialistCandidateId ?? ''}:${step.specialistTitle ?? ''}`)
+        .join('|') ?? '';
+}
+
+function summarizeTraceSpecialistSuggestions(trace: ChatTurnTraceRecord): string {
+    return trace.specialistCandidateSuggestions
+        ?.map((item) => `${item.candidateId}:${item.title}:${item.role}:${item.summary}`)
+        .join('|') ?? '';
+}
+
+function summarizeRoutedSpecialists(trace: ChatTurnTraceRecord): string {
+    return trace.orchestration?.routeDecision?.specialistCandidates
+        ?.map((item) => `${item.candidateId}:${item.title}:${item.role}:${item.matchReason}`)
+        .join('|') ?? '';
+}
+
 async function uploadSelectedImage(
     sessionId: string,
     asset: ImagePicker.ImagePickerAsset,
@@ -1037,9 +1515,47 @@ function resolveAttachmentFileName(asset: ImagePicker.ImagePickerAsset): string 
 
 function stepColor(status: string): string {
     return status === 'completed' ? colors.success :
-        status === 'running' ? colors.cyan :
+        ['queued', 'running', 'waiting_for_tool', 'waiting_for_approval'].includes(status) ? colors.cyan :
+            status === 'cancelled' ? colors.textMuted :
             status === 'failed' ? colors.crimson :
                 colors.textDim;
+}
+
+function isActiveChatTurnStatus(status: ChatTurnLifecycleStatus): boolean {
+    return status === 'queued'
+        || status === 'running'
+        || status === 'waiting_for_tool'
+        || status === 'waiting_for_approval';
+}
+
+function shouldRenderTraceStatusBubble(trace: ChatTurnTraceRecord): boolean {
+    return trace.status === 'waiting_for_approval'
+        || trace.status === 'failed'
+        || trace.status === 'cancelled';
+}
+
+function describeTurnTraceStatus(trace?: ChatTurnTraceRecord): string {
+    if (!trace) {
+        return 'Thinking…';
+    }
+    switch (trace.status) {
+        case 'queued':
+            return 'Queued…';
+        case 'running':
+            return 'Thinking…';
+        case 'waiting_for_tool':
+            return 'Using tools…';
+        case 'waiting_for_approval':
+            return 'Awaiting approval';
+        case 'completed':
+            return 'Completed';
+        case 'failed':
+            return trace.failure?.message || 'This turn failed.';
+        case 'cancelled':
+            return 'This turn was cancelled.';
+        default:
+            return 'Thinking…';
+    }
 }
 
 const markdownStyles = StyleSheet.create({
@@ -1254,6 +1770,28 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.borderCyan,
     },
+    traceStatusBubble: {
+        backgroundColor: colors.bgInset,
+        borderColor: colors.borderQuiet,
+    },
+    traceStatusBubbleFailed: {
+        borderColor: colors.crimson,
+        backgroundColor: 'rgba(255, 86, 120, 0.08)',
+    },
+    traceStatusBubbleCancelled: {
+        borderColor: colors.borderQuiet,
+        backgroundColor: colors.bgInset,
+    },
+    traceStatusTitle: {
+        ...typography.bodySm,
+        color: colors.textPrimary,
+        fontWeight: '700',
+    },
+    traceStatusMessage: {
+        ...typography.bodySm,
+        color: colors.textDim,
+        marginTop: spacing.xs,
+    },
     assistantActionBar: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1323,6 +1861,47 @@ const styles = StyleSheet.create({
     orchStep: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
     orchDot: { width: 6, height: 6, borderRadius: 3 },
     orchStepText: { ...typography.caption, color: colors.textDim },
+    specialistTraceSection: {
+        marginTop: spacing.sm,
+        gap: spacing.xs,
+    },
+    specialistTraceTitle: {
+        ...typography.bodySm,
+        color: colors.textPrimary,
+        fontWeight: '600',
+    },
+    specialistTraceRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: spacing.sm,
+        paddingVertical: 2,
+    },
+    specialistTraceBadge: {
+        backgroundColor: 'rgba(84, 221, 255, 0.12)',
+        borderRadius: radii.pill,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderWidth: 1,
+        borderColor: colors.borderCyan,
+    },
+    specialistTraceBadgeText: {
+        ...typography.caption,
+        color: colors.cyan,
+        fontWeight: '700',
+    },
+    specialistTraceCopy: {
+        flex: 1,
+        gap: 2,
+    },
+    specialistTraceName: {
+        ...typography.bodySm,
+        color: colors.textPrimary,
+        fontWeight: '600',
+    },
+    specialistTraceMeta: {
+        ...typography.caption,
+        color: colors.textDim,
+    },
 
     // Streaming
     streamingBubble: {
@@ -1469,6 +2048,123 @@ const styles = StyleSheet.create({
         borderColor: colors.borderCyan,
     },
     quickPromptText: { ...typography.bodySm, color: colors.cyan },
+    specialistPanel: {
+        paddingHorizontal: spacing.md,
+        paddingBottom: spacing.sm,
+        gap: spacing.sm,
+        backgroundColor: colors.bgShell,
+    },
+    specialistPanelSection: {
+        backgroundColor: colors.bgInset,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+        padding: spacing.md,
+        gap: spacing.sm,
+    },
+    specialistPanelTitle: {
+        ...typography.eyebrow,
+        color: colors.textPrimary,
+    },
+    specialistCard: {
+        backgroundColor: colors.bgCard,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        borderColor: colors.borderCyan,
+        padding: spacing.md,
+        gap: spacing.xs,
+    },
+    specialistCardHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: spacing.sm,
+    },
+    specialistCardCopy: {
+        flex: 1,
+        gap: 2,
+    },
+    specialistCardTitle: {
+        ...typography.bodyMd,
+        color: colors.textPrimary,
+        fontWeight: '700',
+    },
+    specialistCardMeta: {
+        ...typography.caption,
+        color: colors.cyan,
+    },
+    specialistCardSummary: {
+        ...typography.bodySm,
+        color: colors.textSecondary,
+    },
+    specialistCardReason: {
+        ...typography.caption,
+        color: colors.textDim,
+    },
+    specialistStatusBadge: {
+        borderRadius: radii.pill,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        backgroundColor: colors.bgShell,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+    },
+    specialistStatusBadgeText: {
+        ...typography.caption,
+        color: colors.textMuted,
+        textTransform: 'uppercase',
+    },
+    specialistActionRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing.xs,
+        marginTop: spacing.xs,
+    },
+    specialistInlineStatus: {
+        ...typography.caption,
+        color: colors.textDim,
+    },
+    specialistPrimaryBtn: {
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.xs,
+        borderRadius: radii.pill,
+        backgroundColor: 'rgba(84, 221, 255, 0.12)',
+        borderWidth: 1,
+        borderColor: colors.borderCyan,
+    },
+    specialistPrimaryBtnText: {
+        ...typography.caption,
+        color: colors.cyan,
+        fontWeight: '700',
+    },
+    specialistSecondaryBtn: {
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.xs,
+        borderRadius: radii.pill,
+        backgroundColor: colors.bgShell,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+    },
+    specialistSecondaryBtnText: {
+        ...typography.caption,
+        color: colors.textSecondary,
+        fontWeight: '600',
+    },
+    specialistDangerBtn: {
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.xs,
+        borderRadius: radii.pill,
+        backgroundColor: 'rgba(255, 86, 120, 0.08)',
+        borderWidth: 1,
+        borderColor: colors.crimson,
+    },
+    specialistDangerBtnText: {
+        ...typography.caption,
+        color: colors.crimson,
+        fontWeight: '700',
+    },
+    specialistBtnDisabled: {
+        opacity: 0.5,
+    },
     composer: {
         flexDirection: 'row',
         alignItems: 'flex-end',

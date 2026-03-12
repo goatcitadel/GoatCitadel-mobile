@@ -68,6 +68,27 @@ function summarizeDeviceResolution(payload: Record<string, unknown>): string {
     return `${subject} was updated.`;
 }
 
+function buildDetailRoute(baseRoute: string, id?: string): string {
+    const trimmed = id?.trim();
+    if (!trimmed) {
+        return baseRoute;
+    }
+    return `${baseRoute}/${encodeURIComponent(trimmed)}`;
+}
+
+function readApprovalRoute(payload: Record<string, unknown>): string {
+    return buildDetailRoute('/(tabs)/approvals', asString(payload.approvalId));
+}
+
+function readChatRoute(payload: Record<string, unknown>): string {
+    return buildDetailRoute('/(tabs)/chat', asString(payload.sessionId));
+}
+
+function readAgentRoute(payload: Record<string, unknown>): string {
+    const agentId = asString(payload.agentId);
+    return agentId ? buildDetailRoute('/(tabs)/agent', agentId) : '/(tabs)/herd';
+}
+
 export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
     const canonicalType = normalizeRealtimeEventType(event.eventType);
     const payload = asRecord(event.payload);
@@ -79,7 +100,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 title: 'New Approval Request',
                 body: summarizeApprovalCreated(payload),
                 icon: 'lock-closed',
-                route: '/(tabs)/approvals',
+                route: readApprovalRoute(payload),
                 notificationType: 'approval',
                 logLevel: 'warn',
             };
@@ -89,7 +110,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 title: 'Approval Resolved',
                 body: summarizeApprovalResolved(payload),
                 icon: 'lock-open',
-                route: '/(tabs)/approvals',
+                route: readApprovalRoute(payload),
                 notificationType: 'approval',
                 logLevel: 'info',
             };
@@ -99,7 +120,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 title: 'Device Access Requested',
                 body: `${readDeviceSubject(payload)} is waiting for approval.`,
                 icon: 'phone-portrait',
-                route: '/(tabs)/approvals',
+                route: readApprovalRoute(payload),
                 notificationType: 'approval',
                 logLevel: 'warn',
             };
@@ -110,7 +131,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 title: 'Device Access Updated',
                 body: summarizeDeviceResolution(payload),
                 icon: status === 'approved' ? 'shield-checkmark' : 'close-circle',
-                route: '/(tabs)/approvals',
+                route: readApprovalRoute(payload),
                 notificationType: 'approval',
                 logLevel: status === 'approved' ? 'info' : 'warn',
             };
@@ -121,7 +142,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 title: 'Agent Started',
                 body: `Source: ${event.source}`,
                 icon: 'person-add',
-                route: '/(tabs)/herd',
+                route: readAgentRoute(payload),
                 notificationType: 'agent',
                 logLevel: 'info',
             };
@@ -131,7 +152,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 title: 'Agent Updated',
                 body: `Source: ${event.source}`,
                 icon: 'checkmark-done',
-                route: '/(tabs)/herd',
+                route: readAgentRoute(payload),
                 notificationType: 'agent',
                 logLevel: 'info',
             };
@@ -141,7 +162,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 title: 'New Chat Message',
                 body: `Source: ${event.source}`,
                 icon: 'chatbubble',
-                route: '/(tabs)/chat',
+                route: readChatRoute(payload),
                 notificationType: 'chat',
                 logLevel: 'info',
             };
@@ -151,7 +172,7 @@ export function getRealtimeEventMeta(event: RealtimeEvent): RealtimeEventMeta {
                 title: 'Session Event',
                 body: `Source: ${event.source}`,
                 icon: 'add-circle',
-                route: '/(tabs)/chat',
+                route: readChatRoute(payload),
                 notificationType: 'chat',
                 logLevel: 'info',
             };

@@ -7,9 +7,13 @@ import type {
     SystemVitals,
     ChatAttachmentRecord,
     ChatSessionRecord,
+    ChatSpecialistCandidatePatchInput,
+    ChatSpecialistCandidateRecord,
+    ChatSpecialistCandidateSuggestionRecord,
     ChatThreadResponse,
     ChatSendMessageRequest,
     ChatSendMessageResponse,
+    ChatCancelTurnResponse,
     ChatMessageRecord,
     ChatSessionPrefsRecord,
     ApprovalRequest,
@@ -188,6 +192,18 @@ class GatewayApiError extends Error {
         this.body = options.body;
         this.authMode = options.authMode;
     }
+}
+
+export function isGatewayAuthFailure(error: unknown): boolean {
+    if (error instanceof GatewayApiError) {
+        return error.status === 401 || error.status === 403;
+    }
+    const normalized = (error as Error | undefined)?.message?.toLowerCase() ?? '';
+    return normalized.includes('401')
+        || normalized.includes('403')
+        || normalized.includes('credentials are required')
+        || normalized.includes('unauthorized')
+        || normalized.includes('forbidden');
 }
 
 export function setGatewayUrl(url: string) {
@@ -650,6 +666,12 @@ export function fetchChatPrefs(sessionId: string): Promise<ChatSessionPrefsRecor
     return request(`/api/v1/chat/sessions/${sessionId}/prefs`);
 }
 
+export function fetchChatSpecialistCandidates(
+    sessionId: string,
+): Promise<{ items: ChatSpecialistCandidateRecord[] }> {
+    return request(`/api/v1/chat/sessions/${sessionId}/specialist-candidates`);
+}
+
 export function sendChatMessage(
     sessionId: string,
     body: ChatSendMessageRequest,
@@ -660,6 +682,18 @@ export function sendChatMessage(
         body: JSON.stringify(body),
         signal: options?.signal,
         timeoutMs: options?.timeoutMs ?? GATEWAY_CHAT_REQUEST_TIMEOUT_MS,
+    });
+}
+
+export function cancelChatTurn(
+    sessionId: string,
+    turnId: string,
+    cancelledBy?: string,
+): Promise<ChatCancelTurnResponse> {
+    return request(`/api/v1/chat/sessions/${sessionId}/turns/${turnId}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify(cancelledBy ? { cancelledBy } : {}),
+        timeoutMs: GATEWAY_REQUEST_TIMEOUT_MS,
     });
 }
 
@@ -691,6 +725,30 @@ export function updateChatPrefs(
     return request(`/api/v1/chat/sessions/${sessionId}/prefs`, {
         method: 'PATCH',
         body: JSON.stringify(prefs),
+    });
+}
+
+export function createChatSpecialistCandidate(
+    sessionId: string,
+    body: {
+        turnId?: string;
+        suggestion: ChatSpecialistCandidateSuggestionRecord;
+    },
+): Promise<ChatSpecialistCandidateRecord> {
+    return request(`/api/v1/chat/sessions/${sessionId}/specialist-candidates`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+}
+
+export function updateChatSpecialistCandidate(
+    sessionId: string,
+    candidateId: string,
+    body: ChatSpecialistCandidatePatchInput,
+): Promise<ChatSpecialistCandidateRecord> {
+    return request(`/api/v1/chat/sessions/${sessionId}/specialist-candidates/${candidateId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
     });
 }
 
