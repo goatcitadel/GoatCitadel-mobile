@@ -21,7 +21,13 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
-import { Audio } from 'expo-av';
+import {
+    requestRecordingPermissionsAsync,
+    setAudioModeAsync,
+    RecordingPresets,
+    useAudioRecorder,
+    useAudioRecorderState,
+} from 'expo-audio';
 import * as Speech from 'expo-speech';
 import { FlashList } from '@shopify/flash-list';
 import { useToast } from '../../../src/context/ToastContext';
@@ -96,19 +102,29 @@ export default function ChatThreadScreen() {
     const [memoryMode, setMemoryMode] = useState<ChatMemoryMode>('auto');
     const [thinkingLevel, setThinkingLevel] = useState<ChatThinkingLevel>('standard');
     const [selectedImage, setSelectedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
-    const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [specialistActionTargetId, setSpecialistActionTargetId] = useState<string | null>(null);
     const runtime = useChatSessionRuntime(sessionId);
+    const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+    const recorderState = useAudioRecorderState(audioRecorder);
 
-    // P0-4: Clean up active recording on unmount to avoid leaked microphone.
-    // Use a ref so the cleanup always sees the latest recording instance.
-    const recordingRef = useRef<Audio.Recording | null>(null);
-    recordingRef.current = recording;
+    const stopVoiceRecording = useCallback(async () => {
+        try {
+            if (recorderState.isRecording) {
+                await audioRecorder.stop();
+            }
+        } finally {
+            await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+        }
+    }, [audioRecorder, recorderState.isRecording]);
+
+    // Clean up active recording on unmount to avoid leaked microphone state.
     useEffect(() => {
         return () => {
-            recordingRef.current?.stopAndUnloadAsync().catch(() => {});
+            if (recorderState.isRecording) {
+                stopVoiceRecording().catch(() => {});
+            }
         };
-    }, []);
+    }, [recorderState.isRecording, stopVoiceRecording]);
 
     const settings = useApiData(
         useCallback(() => fetchRuntimeSettings(), []),
@@ -654,26 +670,29 @@ export default function ChatThreadScreen() {
     };
 
     const toggleRecording = async () => {
-        if (recording) {
-            await recording.stopAndUnloadAsync();
-            setRecording(null);
-            // Voice transcription requires local or remote whisper runtime.
-            // Until wired to backend /api/voice/transcribe, just notify.
-            showToast({ message: 'Voice recording stopped — transcription not yet connected', type: 'warning' });
-            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        if (recorderState.isRecording) {
+            try {
+                await stopVoiceRecording();
+                // Voice transcription requires local or remote whisper runtime.
+                // Until wired to backend /api/voice/transcribe, just notify.
+                showToast({ message: 'Voice recording stopped — transcription not yet connected', type: 'warning' });
+                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            } catch {
+                showToast({ message: 'Mic recording could not stop cleanly', type: 'error' });
+            }
         } else {
             try {
-                const perm = await Audio.requestPermissionsAsync();
+                const perm = await requestRecordingPermissionsAsync();
                 if (!perm.granted) {
                     showToast({ message: 'Microphone permission denied', type: 'warning' });
                     return;
                 }
-                await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-                const { recording: r } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-                setRecording(r);
+                await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+                await audioRecorder.prepareToRecordAsync();
+                audioRecorder.record();
                 if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            } catch (err: any) {
-                showToast({ message: 'Mic permission denied', type: 'error' });
+            } catch {
+                showToast({ message: 'Mic recording could not start', type: 'error' });
             }
         }
     };
@@ -960,13 +979,13 @@ export default function ChatThreadScreen() {
                             </Pressable>
                         ) : (
                             <Pressable
-                                style={[styles.sendBtn, recording && styles.recordingActiveBtn]}
+                                style={[styles.sendBtn, recorderState.isRecording && styles.recordingActiveBtn]}
                                 onPress={toggleRecording}
                             >
                                 <Ionicons
-                                    name={recording ? "mic" : "mic-outline"}
+                                    name={recorderState.isRecording ? "mic" : "mic-outline"}
                                     size={20}
-                                    color={recording ? colors.crimson : colors.textDim}
+                                    color={recorderState.isRecording ? colors.crimson : colors.textDim}
                                 />
                             </Pressable>
                         )}

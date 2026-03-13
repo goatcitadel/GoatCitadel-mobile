@@ -109,12 +109,16 @@ export function GatewayAccessProvider({ children }: { children: React.ReactNode 
         const subscription = AppState.addEventListener('change', (nextState) => {
             const previousState = appStateRef.current;
             appStateRef.current = nextState;
-            if (previousState !== 'active' && nextState === 'active' && access.status !== 'ready') {
+            if (
+                previousState !== 'active'
+                && nextState === 'active'
+                && (access.status !== 'ready' || liveUpdatesDegraded)
+            ) {
                 void refreshAccess({ preserveVisibleState: true });
             }
         });
         return () => subscription.remove();
-    }, [access.status, refreshAccess]);
+    }, [access.status, liveUpdatesDegraded, refreshAccess]);
 
     const shellState = useMemo(
         () => deriveGatewayShellAccessState(access, {

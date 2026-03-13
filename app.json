@@ -7,7 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "goatcitadel",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -19,7 +18,6 @@
         "backgroundColor": "#06080d"
       },
       "package": "com.goatcitadel.mobile",
-      "usesCleartextTraffic": true,
       "softwareKeyboardLayoutMode": "pan"
     },
     "ios": {
@@ -58,7 +56,9 @@
           }
         }
       ],
-      "expo-image"
+      "expo-image",
+      "expo-audio",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
