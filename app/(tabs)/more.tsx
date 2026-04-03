@@ -23,6 +23,8 @@ const MENU: MenuItem[] = [
     { icon: 'git-branch', label: 'Mission Sessions', desc: 'Mission-scope session list', color: colors.ember, route: '/(tabs)/cowork' },
     { icon: 'code-slash', label: 'Code Sessions', desc: 'Sessions with project context', color: colors.success, route: '/(tabs)/code' },
     { icon: 'pulse', label: 'Pulse', desc: 'Live event stream', color: colors.cyan, route: '/(tabs)/pulse' },
+    { icon: 'easel', label: 'Canvas', desc: 'Companion-backed A2UI lane', color: colors.cyan, route: '/(tabs)/canvas' },
+    { icon: 'layers', label: 'Parity Lanes', desc: 'Browser, voice & plugin proofs', color: '#a78bfa', route: '/(tabs)/parity' },
     { icon: 'list', label: 'Sessions', desc: 'Run history & costs', color: colors.cyan, route: '/(tabs)/sessions' },
     { icon: 'extension-puzzle', label: 'Skills', desc: 'Manage skill states', color: colors.ember, route: '/(tabs)/skills' },
     { icon: 'server', label: 'MCP Servers', desc: 'Connect & monitor tool servers', color: '#f472b6', route: '/(tabs)/mcp' },

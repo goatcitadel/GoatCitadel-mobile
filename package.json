@@ -5,6 +5,11 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
+    "android:doctor": "node scripts/android-emulator-doctor.mjs",
+    "android:avd:list": "node scripts/android-emulator-doctor.mjs --list-avds",
+    "android:emulator:start": "node scripts/android-emulator-start.mjs",
+    "android:install:apk": "node scripts/android-install-apk.mjs",
+    "android:proof:handoff": "node scripts/android-proof-handoff.mjs",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "build:android": "eas build --platform android --profile preview",
@@ -18,6 +23,7 @@
     "@goatcitadel/contracts": "0.6.0-beta.2",
     "@gorhom/bottom-sheet": "*",
     "@shopify/flash-list": "2.0.2",
+    "buffer": "^6.0.3",
     "expo": "~55.0.5",
     "expo-asset": "~55.0.8",
     "expo-audio": "~55.0.8",
@@ -25,6 +31,7 @@
     "expo-build-properties": "*",
     "expo-clipboard": "~55.0.8",
     "expo-constants": "*",
+    "expo-crypto": "~15.0.8",
     "expo-file-system": "~55.0.10",
     "expo-font": "*",
     "expo-haptics": "~55.0.8",
@@ -49,7 +56,8 @@
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
     "react-native-web": "^0.21.2",
-    "react-native-worklets": "0.7.2"
+    "react-native-worklets": "0.7.2",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

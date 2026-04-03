@@ -407,6 +407,12 @@ export interface ProviderRecord {
     hasApiKey: boolean;
 }
 
+export interface LlmModelRecord {
+    id: string;
+    ownedBy?: string;
+    created?: number;
+}
+
 export interface RuntimeSettings {
     defaultToolProfile: string;
     budgetMode: string;
@@ -427,14 +433,246 @@ export type GatewayAuthMode = 'none' | 'token' | 'basic';
 export type GatewayAccessPreflightStatus = 'ready' | 'needs-auth' | 'unreachable' | 'misconfigured';
 export type DeviceAccessDeviceType = DeviceAccessRequestDeviceType;
 export type GatewayConnectionCheckStatus = 'success' | 'transport-blocked' | 'timeout' | '401' | 'http-error';
+export type CompanionContractId = 'companion.android.v1';
+export type CompanionSignatureAlgorithm = 'ed25519';
 
 export interface GatewayConnectionCheck {
-    id: 'native-module' | 'health' | 'auth';
+    id: 'native-module' | 'health' | 'auth' | 'companion-session';
     label: string;
     path: string;
     status: GatewayConnectionCheckStatus;
     detail: string;
     statusCode?: number;
+}
+
+export interface CompanionSessionExchangeInput {
+    signingPublicKeyPem: string;
+    clientName?: string;
+    appVersion?: string;
+}
+
+export interface CompanionSessionTokenBundle {
+    sessionId: string;
+    accessToken: string;
+    accessTokenExpiresAt: string;
+    refreshToken: string;
+    refreshTokenExpiresAt: string;
+    issuedAt: string;
+    signatureAlgorithm: CompanionSignatureAlgorithm;
+}
+
+export interface CompanionSessionExchangeResponse extends CompanionSessionTokenBundle {
+    contractId: CompanionContractId;
+    grantId: string;
+    actorId: string;
+    deviceLabel: string;
+    deviceType: DeviceAccessRequestDeviceType;
+    platform?: string;
+}
+
+export interface CompanionSessionRefreshResponse extends CompanionSessionTokenBundle {
+    contractId: CompanionContractId;
+    grantId: string;
+    actorId: string;
+}
+
+export interface CompanionSessionInfoResponse {
+    contractId: CompanionContractId;
+    sessionId: string;
+    grantId: string;
+    actorId: string;
+    deviceLabel: string;
+    deviceType: DeviceAccessRequestDeviceType;
+    platform?: string;
+    createdAt: string;
+    lastSeenAt?: string;
+    accessTokenExpiresAt: string;
+    refreshTokenExpiresAt: string;
+    signatureAlgorithm: CompanionSignatureAlgorithm;
+    metadata: Record<string, unknown>;
+}
+
+export type FollowOnParityEpicState = 'have_foundation' | 'partial' | 'missing';
+
+export interface FollowOnParityTargetRecord {
+    catalogId: string;
+    label: string;
+    maturity: string;
+    capabilities: string[];
+}
+
+export interface A2UIContractRecord {
+    contractId: 'a2ui.v1';
+    label: string;
+    scopes: string[];
+    transports: string[];
+    operatorSurface: string;
+    uiCapabilities: string[];
+    platformCapabilities: string[];
+    notes: string[];
+}
+
+export interface CompanionContractRecord {
+    contractId: CompanionContractId;
+    label: string;
+    pairedSurfaceContractId: 'a2ui.v1';
+    primaryTarget: string;
+    bootstrapStatus: string;
+    repoStrategy: string;
+    bootstrapRepo: string;
+    targetCatalogIds: string[];
+    deviceCapabilities: string[];
+    transportLanes: string[];
+    authRequirements: string[];
+    serverPrerequisites: string[];
+    bootstrapFeatures: string[];
+    notes: string[];
+}
+
+export interface FollowOnParityReadinessRecord {
+    key: string;
+    label: string;
+    state: FollowOnParityEpicState;
+    note: string;
+}
+
+export interface FollowOnParityEpicRecord {
+    epicId: string;
+    label: string;
+    state: FollowOnParityEpicState;
+    summary: string;
+    nextSlice: string;
+}
+
+export interface FollowOnArtifactStatus {
+    hasArtifact: boolean;
+    freshness: 'missing' | 'stale' | 'current';
+    ageDays?: number;
+}
+
+export interface FollowOnProfileArtifactStatus extends FollowOnArtifactStatus {
+    latestArtifactDeploymentProfile?: string;
+    matchedCurrentProfile: boolean;
+}
+
+export interface FollowOnProfileCoverageRecord {
+    currentProfiles: string[];
+    staleProfiles: string[];
+    missingProfiles: string[];
+}
+
+export interface FollowOnStateToolRuntimeRecord {
+    restrictedToProfile: string;
+    registeredTools: string[];
+    allowedTools: string[];
+    blockedTools: string[];
+}
+
+export interface FollowOnPluginReferenceLifecycleRecord {
+    referencePluginId: string;
+    present: boolean;
+    enabled: boolean;
+    source?: string;
+    matchesReferenceSource: boolean;
+    capabilities: string[];
+}
+
+export interface FollowOnParityReport {
+    generatedAt: string;
+    deploymentProfile: string;
+    authMode: GatewayAuthMode;
+    packaging: {
+        allowLoopbackBypass: boolean;
+        networkAllowlistCount: number;
+        postureSummary: string;
+        proofStatus: FollowOnProfileArtifactStatus;
+        proofCoverage: FollowOnProfileCoverageRecord;
+        blockingIssues: string[];
+        recommendedActions: string[];
+        latestArtifact?: FollowOnProofLaneArtifactRecord;
+    };
+    browser: {
+        totalToolCount: number;
+        readToolCount: number;
+        controlToolCount: number;
+        guardrailSummary: string;
+        stateToolRuntime: FollowOnStateToolRuntimeRecord;
+        artifactStatus: FollowOnProfileArtifactStatus;
+        blockingIssues: string[];
+        recommendedActions: string[];
+        automationCatalog?: FollowOnParityTargetRecord;
+        latestArtifact?: FollowOnProofLaneArtifactRecord;
+    };
+    voice: {
+        runtimeReadiness: string;
+        selectedModelId?: string;
+        talkState: string;
+        wakeState: string;
+        wakeEnabled: boolean;
+        lastError?: string;
+        artifactStatus: FollowOnProfileArtifactStatus;
+        proofCoverage: FollowOnProfileCoverageRecord;
+        blockingIssues: string[];
+        recoveryActions: string[];
+        recommendedActions: string[];
+        automationCatalog?: FollowOnParityTargetRecord;
+        latestArtifact?: FollowOnProofLaneArtifactRecord;
+    };
+    addons: {
+        catalogCount: number;
+        installedCount: number;
+        runningCount: number;
+    };
+    plugins: {
+        totalCount: number;
+        enabledCount: number;
+        sdkSummary: string;
+        referenceLifecycle: FollowOnPluginReferenceLifecycleRecord;
+        artifactStatus: FollowOnArtifactStatus;
+        blockingIssues: string[];
+        recommendedActions: string[];
+        latestArtifact?: FollowOnProofLaneArtifactRecord;
+    };
+    canvas: {
+        automationCatalog?: FollowOnParityTargetRecord;
+        platformTargets: FollowOnParityTargetRecord[];
+        contract?: A2UIContractRecord;
+        paritySummary: string;
+        artifactStatus: FollowOnProfileArtifactStatus;
+        blockingIssues: string[];
+        recommendedActions: string[];
+        latestArtifact?: FollowOnProofLaneArtifactRecord;
+    };
+    companion: {
+        platformTargets: FollowOnParityTargetRecord[];
+        contract?: CompanionContractRecord;
+        artifactStatus: FollowOnArtifactStatus;
+        authReadiness: FollowOnParityReadinessRecord[];
+        prerequisiteReadiness: FollowOnParityReadinessRecord[];
+        paritySummary: string;
+        blockingIssues: string[];
+        recommendedActions: string[];
+        latestArtifact?: FollowOnProofLaneArtifactRecord;
+    };
+    epics: FollowOnParityEpicRecord[];
+}
+
+export type FollowOnProofLaneArtifactLaneId =
+    'browser'
+    | 'packaging'
+    | 'a2ui'
+    | 'voice'
+    | 'companion'
+    | 'extensions';
+
+export interface FollowOnProofLaneArtifactRecord {
+    laneId: FollowOnProofLaneArtifactLaneId;
+    generatedAt: string;
+    summary: string;
+    relativePath: string;
+    fullPath: string;
+    bytes: number;
+    proofState?: 'draft' | 'complete' | 'evidence';
 }
 
 export interface GatewayAccessPreflightResult {

@@ -2,6 +2,10 @@
  * GoatCitadel Mobile — Gateway API Client
  */
 import { NativeModules, Platform } from 'react-native';
+import Constants from 'expo-constants';
+import * as ExpoCrypto from 'expo-crypto';
+import nacl from 'tweetnacl';
+import { Buffer } from 'buffer';
 import type {
     DashboardState,
     SystemVitals,
@@ -18,6 +22,7 @@ import type {
     ChatSessionPrefsRecord,
     ApprovalRequest,
     AgentProfileRecord,
+    LlmModelRecord,
     RuntimeSettings,
     SkillListItem,
     SkillRuntimeState,
@@ -26,19 +31,42 @@ import type {
     GatewayAccessPreflightResult,
     GatewayConnectionCheck,
     GatewayAuthMode,
+    RealtimeEvent,
     DeviceAccessRequestCreateInput,
     DeviceAccessRequestCreateResponse,
     DeviceAccessRequestStatusResponse,
+    CompanionSessionExchangeInput,
+    CompanionSessionExchangeResponse,
+    CompanionSessionInfoResponse,
+    CompanionSessionRefreshResponse,
+    FollowOnParityReport,
+    FollowOnProofLaneArtifactRecord,
 } from './types';
+import { deleteSecureItem, getSecureItem, setSecureItem } from '../utils/storage';
 
-let gatewayBaseUrl = 'http://127.0.0.1:8787';
+let gatewayBaseUrl = '';
 let authToken: string | undefined;
+let companionSession: PersistedCompanionSession | undefined;
+let companionRefreshInFlight: Promise<PersistedCompanionSession> | undefined;
+let lastCompanionBootstrapError: string | undefined;
+const STORE_KEY_URL = 'gc_gateway_url';
+const STORE_KEY_TOKEN = 'gc_auth_token';
+const STORE_KEY_COMPANION_SESSION = 'gc_companion_session';
 const GATEWAY_HEALTH_PATH = '/health';
 const GATEWAY_AUTH_PROBE_PATH = '/api/v1/sessions?limit=1';
 const GATEWAY_PROBE_TIMEOUT_MS = 5000;
 const GATEWAY_REQUEST_TIMEOUT_MS = 20000;
 const GATEWAY_CHAT_REQUEST_TIMEOUT_MS = 180000;
 const GATEWAY_THREAD_REQUEST_TIMEOUT_MS = 20000;
+const COMPANION_REFRESH_SKEW_MS = 30_000;
+const COMPANION_PUBLIC_KEY_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+export interface PersistedCompanionSession extends CompanionSessionExchangeResponse {
+    signingPublicKeyPem: string;
+    signingPrivateKeyBase64: string;
+    clientName?: string;
+    appVersion?: string;
+}
 
 type AndroidGatewayHttpResult = {
     url?: string;
@@ -207,11 +235,19 @@ export function isGatewayAuthFailure(error: unknown): boolean {
 }
 
 export function setGatewayUrl(url: string) {
-    gatewayBaseUrl = url.replace(/\/+$/, '');
+    gatewayBaseUrl = url.trim().replace(/\/+$/, '');
 }
 
 export function setAuthToken(token: string | undefined) {
     authToken = token?.trim() || undefined;
+}
+
+export function setCompanionSession(session: PersistedCompanionSession | undefined) {
+    companionSession = session;
+    if (session) {
+        authToken = undefined;
+        lastCompanionBootstrapError = undefined;
+    }
 }
 
 export function getAuthToken() {
@@ -222,11 +258,80 @@ export function getGatewayUrl() {
     return gatewayBaseUrl;
 }
 
-function authHeaders(): Record<string, string> {
-    if (!authToken) return {};
+export function getCompanionSession() {
+    return companionSession;
+}
+
+export function getLastCompanionBootstrapError() {
+    return lastCompanionBootstrapError;
+}
+
+function getDefaultCompanionClientName(): string {
+    const configuredName = typeof Constants.expoConfig?.name === 'string'
+        ? Constants.expoConfig.name.trim()
+        : '';
+    return configuredName || 'GoatCitadel Mobile';
+}
+
+function getDefaultCompanionAppVersion(): string | undefined {
+    const configuredVersion = typeof Constants.expoConfig?.version === 'string'
+        ? Constants.expoConfig.version.trim()
+        : '';
+    return configuredVersion || undefined;
+}
+
+export async function initializeStoredGatewayAccess(): Promise<{
+    gatewayUrl: string;
+    authToken?: string;
+    companionSession?: PersistedCompanionSession;
+}> {
+    const storedUrl = await getSecureItem(STORE_KEY_URL);
+    const storedToken = await getSecureItem(STORE_KEY_TOKEN);
+    const storedCompanionSession = await getSecureItem(STORE_KEY_COMPANION_SESSION);
+    const nextUrl = gatewayBaseUrl.trim() || storedUrl?.trim() || '';
+    let parsedCompanionSession: PersistedCompanionSession | undefined;
+    if (storedCompanionSession?.trim()) {
+        try {
+            parsedCompanionSession = JSON.parse(storedCompanionSession) as PersistedCompanionSession;
+        } catch {
+            await deleteSecureItem(STORE_KEY_COMPANION_SESSION);
+        }
+    }
+    setGatewayUrl(nextUrl);
+    setCompanionSession(parsedCompanionSession);
+    setAuthToken(parsedCompanionSession ? undefined : storedToken || undefined);
     return {
-        Authorization: `Bearer ${authToken}`,
-        'x-goatcitadel-token': authToken,
+        gatewayUrl: nextUrl,
+        authToken: parsedCompanionSession ? undefined : (storedToken?.trim() || undefined),
+        companionSession: parsedCompanionSession,
+    };
+}
+
+export async function persistGatewayAccessState(input: {
+    gatewayUrl: string;
+    authToken?: string;
+    companionSession?: PersistedCompanionSession;
+}): Promise<void> {
+    await setSecureItem(STORE_KEY_URL, input.gatewayUrl);
+    if (input.companionSession) {
+        await setSecureItem(STORE_KEY_COMPANION_SESSION, JSON.stringify(input.companionSession));
+        await deleteSecureItem(STORE_KEY_TOKEN);
+        return;
+    }
+    await deleteSecureItem(STORE_KEY_COMPANION_SESSION);
+    if (input.authToken?.trim()) {
+        await setSecureItem(STORE_KEY_TOKEN, input.authToken.trim());
+    } else {
+        await deleteSecureItem(STORE_KEY_TOKEN);
+    }
+}
+
+function authHeaders(): Record<string, string> {
+    const bearer = companionSession?.accessToken || authToken;
+    if (!bearer) return {};
+    return {
+        Authorization: `Bearer ${bearer}`,
+        ...(companionSession ? {} : { 'x-goatcitadel-token': bearer }),
     };
 }
 
@@ -281,7 +386,270 @@ function normalizeAuthMode(body: unknown): GatewayAuthMode | undefined {
     return undefined;
 }
 
+function isCompanionSignedMutationMethod(method: string): boolean {
+    const normalized = method.trim().toUpperCase();
+    return normalized === 'POST' || normalized === 'PUT' || normalized === 'PATCH' || normalized === 'DELETE';
+}
+
+function shouldRefreshCompanionSession(session: PersistedCompanionSession): boolean {
+    const expiresAt = Date.parse(session.accessTokenExpiresAt);
+    if (!Number.isFinite(expiresAt)) {
+        return true;
+    }
+    return expiresAt - Date.now() <= COMPANION_REFRESH_SKEW_MS;
+}
+
+function normalizeCompanionRequestPath(path: string): string {
+    const trimmed = path.trim();
+    if (!trimmed) {
+        return '/';
+    }
+    return trimmed.split('?', 1)[0] || '/';
+}
+
+function sortCompanionJsonValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map((item) => sortCompanionJsonValue(item));
+    }
+    if (value && typeof value === 'object') {
+        return Object.keys(value as Record<string, unknown>)
+            .sort((left, right) => left.localeCompare(right))
+            .reduce<Record<string, unknown>>((acc, key) => {
+                acc[key] = sortCompanionJsonValue((value as Record<string, unknown>)[key]);
+                return acc;
+            }, {});
+    }
+    return value;
+}
+
+function canonicalizeCompanionBody(body: unknown): string {
+    if (body === undefined) {
+        return '';
+    }
+    return JSON.stringify(sortCompanionJsonValue(body));
+}
+
+function stringifyPemBlock(label: string, bytes: Uint8Array): string {
+    const base64 = Buffer.from(bytes).toString('base64');
+    const wrapped = base64.match(/.{1,64}/g)?.join('\n') ?? base64;
+    return `-----BEGIN ${label}-----\n${wrapped}\n-----END ${label}-----`;
+}
+
+function toBase64Url(buffer: Uint8Array): string {
+    return Buffer.from(buffer)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+}
+
+async function createCompanionSigningMaterial(): Promise<{
+    signingPublicKeyPem: string;
+    signingPrivateKeyBase64: string;
+}> {
+    // React Native/Hermes release builds do not provide tweetnacl's default
+    // PRNG hook reliably, so derive the Ed25519 keypair from ExpoCrypto bytes.
+    const seed = Uint8Array.from(ExpoCrypto.getRandomBytes(32));
+    const keyPair = nacl.sign.keyPair.fromSeed(seed);
+    const publicKeyDer = new Uint8Array(COMPANION_PUBLIC_KEY_SPKI_PREFIX.length + keyPair.publicKey.length);
+    publicKeyDer.set(COMPANION_PUBLIC_KEY_SPKI_PREFIX, 0);
+    publicKeyDer.set(keyPair.publicKey, COMPANION_PUBLIC_KEY_SPKI_PREFIX.length);
+    return {
+        signingPublicKeyPem: stringifyPemBlock('PUBLIC KEY', publicKeyDer),
+        signingPrivateKeyBase64: Buffer.from(keyPair.secretKey).toString('base64'),
+    };
+}
+
+async function buildCompanionSignatureHeaders(
+    method: string,
+    path: string,
+    body: string | undefined,
+): Promise<Record<string, string>> {
+    if (!companionSession) {
+        return {};
+    }
+    const timestamp = new Date().toISOString();
+    const nonce = toBase64Url(ExpoCrypto.getRandomBytes(18));
+    let parsedBody: unknown = undefined;
+    if (body && body.trim()) {
+        try {
+            parsedBody = JSON.parse(body);
+        } catch {
+            parsedBody = body;
+        }
+    }
+    const canonicalBody = canonicalizeCompanionBody(parsedBody);
+    const bodyHash = await ExpoCrypto.digestStringAsync(
+        ExpoCrypto.CryptoDigestAlgorithm.SHA256,
+        canonicalBody,
+        { encoding: ExpoCrypto.CryptoEncoding.HEX },
+    );
+    const payload = `${method.trim().toUpperCase()}\n${normalizeCompanionRequestPath(path)}\n${timestamp}\n${nonce}\n${bodyHash}`;
+    const secretKey = Uint8Array.from(Buffer.from(companionSession.signingPrivateKeyBase64, 'base64'));
+    const signature = nacl.sign.detached(Buffer.from(payload, 'utf8'), secretKey);
+    return {
+        'x-goatcitadel-companion-timestamp': timestamp,
+        'x-goatcitadel-companion-nonce': nonce,
+        'x-goatcitadel-companion-signature': toBase64Url(signature),
+    };
+}
+
+async function persistCurrentGatewayAccess(): Promise<void> {
+    await persistGatewayAccessState({
+        gatewayUrl: gatewayBaseUrl,
+        authToken,
+        companionSession,
+    });
+}
+
+async function refreshCompanionSessionInternal(refreshToken: string): Promise<CompanionSessionRefreshResponse> {
+    const payload = JSON.stringify({ refreshToken });
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+    };
+    const targetUrl = buildGatewayUrl('/api/v1/auth/companion/session/refresh');
+    const nativeResult = await androidNativeRequest('POST', targetUrl, headers, payload, GATEWAY_REQUEST_TIMEOUT_MS);
+    if (nativeResult) {
+        const status = nativeResult.status ?? -1;
+        if (status <= 0) {
+            const diagnostics = formatAndroidGatewayDiagnostics(nativeResult);
+            throw new GatewayApiError(
+                `Network error: ${diagnostics || nativeResult.errorMessage || 'Native Android request failed'}`,
+                { kind: 'network' },
+            );
+        }
+        if (status < 200 || status >= 300) {
+            const responseBody = parseErrorBody(nativeResult.body ?? '');
+            throw new GatewayApiError(
+                readApiErrorMessage(responseBody) || `API error ${status}`,
+                {
+                    kind: 'api',
+                    status,
+                    body: responseBody,
+                    authMode: normalizeAuthMode(responseBody),
+                },
+            );
+        }
+        const text = nativeResult.body?.trim() ?? '';
+        return unwrap<CompanionSessionRefreshResponse>(JSON.parse(text) as unknown);
+    }
+
+    const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers,
+        body: payload,
+    });
+    if (!response.ok) {
+        const text = await response.text();
+        const parsedBody = parseErrorBody(text);
+        throw new GatewayApiError(
+            readApiErrorMessage(parsedBody) || `API error ${response.status}`,
+            {
+                kind: 'api',
+                status: response.status,
+                body: parsedBody,
+                authMode: normalizeAuthMode(parsedBody),
+            },
+        );
+    }
+    return unwrap<CompanionSessionRefreshResponse>(await response.json() as unknown);
+}
+
+async function ensureCompanionSessionReady(): Promise<void> {
+    if (!companionSession || !shouldRefreshCompanionSession(companionSession)) {
+        return;
+    }
+    if (!companionRefreshInFlight) {
+        companionRefreshInFlight = (async () => {
+            if (!companionSession) {
+                throw new Error('Companion session is not available.');
+            }
+            const refreshed = await refreshCompanionSessionInternal(companionSession.refreshToken);
+            const nextSession: PersistedCompanionSession = {
+                ...companionSession,
+                ...refreshed,
+            };
+            setCompanionSession(nextSession);
+            await persistCurrentGatewayAccess();
+            return nextSession;
+        })().finally(() => {
+            companionRefreshInFlight = undefined;
+        });
+    }
+    try {
+        await companionRefreshInFlight;
+    } catch (error) {
+        setCompanionSession(undefined);
+        await persistCurrentGatewayAccess();
+        throw error;
+    }
+}
+
+export async function clearGatewayAccessState(): Promise<void> {
+    setCompanionSession(undefined);
+    setAuthToken(undefined);
+    lastCompanionBootstrapError = undefined;
+    await persistCurrentGatewayAccess();
+}
+
+export async function exchangeCompanionSessionFromApprovedDevice(
+    deviceToken: string,
+    input?: Partial<CompanionSessionExchangeInput>,
+): Promise<PersistedCompanionSession> {
+    const trimmedDeviceToken = deviceToken.trim();
+    if (!trimmedDeviceToken) {
+        throw new Error('A device token is required before exchanging a companion session.');
+    }
+
+    const signingMaterial = await createCompanionSigningMaterial();
+    const clientName = input?.clientName?.trim() || getDefaultCompanionClientName();
+    const appVersion = input?.appVersion?.trim() || getDefaultCompanionAppVersion();
+    const previousToken = authToken;
+    const previousSession = companionSession;
+
+    setCompanionSession(undefined);
+    setAuthToken(trimmedDeviceToken);
+
+    try {
+        const response = await request<CompanionSessionExchangeResponse>('/api/v1/auth/companion/session/exchange', {
+            method: 'POST',
+            body: JSON.stringify({
+                signingPublicKeyPem: signingMaterial.signingPublicKeyPem,
+                clientName,
+                ...(appVersion ? { appVersion } : {}),
+            } satisfies CompanionSessionExchangeInput),
+        });
+        const nextSession: PersistedCompanionSession = {
+            ...response,
+            ...signingMaterial,
+            clientName,
+            appVersion,
+        };
+        setCompanionSession(nextSession);
+        setAuthToken(undefined);
+        lastCompanionBootstrapError = undefined;
+        await persistCurrentGatewayAccess();
+        return nextSession;
+    } catch (error) {
+        lastCompanionBootstrapError = (error as Error).message || 'Companion session bootstrap failed.';
+        setCompanionSession(previousSession);
+        setAuthToken(previousSession ? undefined : previousToken);
+        await persistCurrentGatewayAccess();
+        throw error;
+    }
+}
+
+export function fetchCompanionSessionInfo(): Promise<CompanionSessionInfoResponse> {
+    return request('/api/v1/auth/companion/session');
+}
+
 function buildGatewayUrl(path: string): string {
+    if (!gatewayBaseUrl.trim()) {
+        throw new GatewayApiError(
+            'Gateway URL is not configured yet. Enter your gateway URL first.',
+            { kind: 'network' },
+        );
+    }
     return `${gatewayBaseUrl}${path}`;
 }
 
@@ -549,15 +917,24 @@ type GatewayRequestInit = RequestInit & {
 async function request<T>(path: string, init?: GatewayRequestInit): Promise<T> {
     const method = init?.method ?? 'GET';
     const timeoutMs = init?.timeoutMs ?? GATEWAY_REQUEST_TIMEOUT_MS;
+    const body = typeof init?.body === 'string' ? init.body : undefined;
+
+    if (companionSession) {
+        await ensureCompanionSessionReady();
+    }
+
+    const companionSignatureHeaders = companionSession && isCompanionSignedMutationMethod(method)
+        ? await buildCompanionSignatureHeaders(method, path, body)
+        : {};
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...authHeaders(),
         ...(method !== 'GET' ? { 'Idempotency-Key': createIdempotencyKey() } : {}),
         ...(init?.headers as Record<string, string> ?? {}),
+        ...companionSignatureHeaders,
     };
 
-    const targetUrl = `${gatewayBaseUrl}${path}`;
-    const body = typeof init?.body === 'string' ? init.body : undefined;
+    const targetUrl = buildGatewayUrl(path);
     const nativeResult = await androidNativeRequest(
         method,
         targetUrl,
@@ -646,6 +1023,60 @@ export function fetchDashboard(): Promise<DashboardState> {
 
 export function fetchSystemVitals(): Promise<SystemVitals> {
     return request('/api/v1/system/vitals');
+}
+
+export function fetchFollowOnParityReport(): Promise<FollowOnParityReport> {
+    return request('/api/v1/system/follow-on-parity');
+}
+
+export function exportA2UIProofLane(): Promise<FollowOnProofLaneArtifactRecord> {
+    return request('/api/v1/system/follow-on-parity/a2ui-proof-lane/export', {
+        method: 'POST',
+        body: '{}',
+    });
+}
+
+export function exportBrowserProofLane(): Promise<FollowOnProofLaneArtifactRecord> {
+    return request('/api/v1/system/follow-on-parity/browser-proof-lane/export', {
+        method: 'POST',
+        body: '{}',
+    });
+}
+
+export function exportVoiceProofLane(): Promise<FollowOnProofLaneArtifactRecord> {
+    return request('/api/v1/system/follow-on-parity/voice-proof-lane/export', {
+        method: 'POST',
+        body: '{}',
+    });
+}
+
+export function exportCompanionBootstrapBrief(): Promise<FollowOnProofLaneArtifactRecord> {
+    return request('/api/v1/system/follow-on-parity/companion-bootstrap-brief/export', {
+        method: 'POST',
+        body: '{}',
+    });
+}
+
+export function exportExtensionSdkBrief(): Promise<FollowOnProofLaneArtifactRecord> {
+    return request('/api/v1/system/follow-on-parity/extension-sdk-brief/export', {
+        method: 'POST',
+        body: '{}',
+    });
+}
+
+export function fetchRealtimeEvents(options?: {
+    limit?: number;
+    cursor?: string;
+}): Promise<{ items: RealtimeEvent[]; nextCursor?: string }> {
+    const params = new URLSearchParams();
+    if (options?.limit) {
+        params.set('limit', String(options.limit));
+    }
+    if (options?.cursor?.trim()) {
+        params.set('cursor', options.cursor.trim());
+    }
+    const suffix = params.size > 0 ? `?${params.toString()}` : '';
+    return request(`/api/v1/events${suffix}`);
 }
 
 // ─── Chat Sessions ───────────────────────────────
@@ -782,9 +1213,52 @@ export function fetchRuntimeSettings(): Promise<RuntimeSettings> {
     return request('/api/v1/settings');
 }
 
+export function fetchLlmModels(providerId?: string): Promise<{ items: LlmModelRecord[] }> {
+    const query = providerId?.trim()
+        ? `?providerId=${encodeURIComponent(providerId.trim())}`
+        : '';
+    return request(`/api/v1/llm/models${query}`);
+}
+
 // ─── Gateway Access / Pairing ───────────────────
 export async function preflightGatewayAccess(): Promise<GatewayAccessPreflightResult> {
+    if (!gatewayBaseUrl.trim()) {
+        return {
+            status: 'misconfigured',
+            message: 'Enter the gateway URL for this device before continuing.',
+            healthDetail: 'Use your computer LAN IP, for example http://192.168.0.10:8787.',
+        };
+    }
+
     const checks: GatewayConnectionCheck[] = [];
+
+    if (companionSession) {
+        try {
+            await ensureCompanionSessionReady();
+            checks.push({
+                id: 'companion-session',
+                label: 'Companion session',
+                path: '/api/v1/auth/companion/session/refresh',
+                status: 'success',
+                detail: 'Stored companion session is present and ready for gateway probes.',
+            });
+        } catch (error) {
+            checks.push({
+                id: 'companion-session',
+                label: 'Companion session',
+                path: '/api/v1/auth/companion/session/refresh',
+                status: '401',
+                detail: (error as Error).message || 'Stored companion session could not be refreshed.',
+            });
+            return {
+                status: 'needs-auth',
+                message: 'Stored companion credentials expired or could not be refreshed. Re-approve this device to continue.',
+                healthDetail: formatGatewayChecks(checks),
+                authMode: 'token',
+                checks,
+            };
+        }
+    }
 
     // ── Native module diagnostic ────────────────────────────────
     const nativeProbe = await probeNativeModule();

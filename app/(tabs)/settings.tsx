@@ -41,6 +41,11 @@ export default function SettingsScreen() {
         useCallback(() => fetchRuntimeSettings(), []),
     );
 
+    const handleGatewayUrlChange = useCallback((nextUrl: string) => {
+        setGwUrl(nextUrl);
+        setGatewayUrl(nextUrl);
+    }, []);
+
     const testConnection = async () => {
         const trimmedUrl = gwUrl.trim();
         const trimmedToken = token.trim();
@@ -136,8 +141,8 @@ export default function SettingsScreen() {
                 <GCCard style={s.section}>
                     <Text style={s.sectionTitle}>GATEWAY URL</Text>
                     <View style={s.inputRow}>
-                        <TextInput style={s.input} value={gwUrl} onChangeText={setGwUrl}
-                            placeholder="http://127.0.0.1:8787" placeholderTextColor={colors.textDim}
+                        <TextInput style={s.input} value={gwUrl} onChangeText={handleGatewayUrlChange}
+                            placeholder="http://192.168.0.10:8787" placeholderTextColor={colors.textDim}
                             autoCapitalize="none" autoCorrect={false} keyboardType="url" />
                         <GCStatusChip tone={gatewayShellAccessToneToChipTone(shellState.tone)}>
                             {shellState.status === 'degraded-live-updates' ? 'LIVE DEGRADED' : shellState.label.toUpperCase()}

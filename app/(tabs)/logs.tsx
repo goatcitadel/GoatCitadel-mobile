@@ -2,7 +2,7 @@
  * GoatCitadel Mobile — System Logs Screen
  * Real-time log viewer with severity filtering and auto-scroll.
  */
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     View, Text, Pressable, StyleSheet, RefreshControl,
 } from 'react-native';
@@ -11,11 +11,10 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCButton, PulseDot } from '../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
-import { useApiData } from '../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
-import { fetchDashboard } from '../../src/api/client';
-import type { DashboardState, RealtimeEvent } from '../../src/api/types';
+import type { RealtimeEvent } from '../../src/api/types';
 import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
+import { useRealtimeEvents } from '../../src/context/RealtimeEventsContext';
 
 type LogLevel = 'all' | 'info' | 'warn' | 'error' | 'debug';
 
@@ -52,13 +51,7 @@ export default function LogsScreen() {
     const [filter, setFilter] = useState<LogLevel>('all');
     const [autoScroll, setAutoScroll] = useState(true);
     const listRef = useRef<any>(null);
-
-    const dashboard = useApiData<DashboardState>(
-        useCallback(() => fetchDashboard(), []),
-        { pollMs: 3000 },
-    );
-
-    const events = dashboard.data?.recentEvents ?? [];
+    const { events, status, error, refreshSnapshot } = useRealtimeEvents();
     const logs = events.map(eventToLog);
     const filtered = filter === 'all' ? logs : logs.filter(l => l.level === filter);
 
@@ -76,7 +69,7 @@ export default function LogsScreen() {
             <GCHeader
                 eyebrow="Debug & Monitoring"
                 title="System Logs"
-                subtitle={`${filtered.length} entries · polling 3s`}
+                subtitle={`${filtered.length} entries · foreground SSE`}
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
 
@@ -112,7 +105,9 @@ export default function LogsScreen() {
             {/* Live indicator */}
             <View style={s.liveBar}>
                 <PulseDot color={colors.success} size={5} />
-                <Text style={s.liveText}>Live — polling every 3 seconds</Text>
+                <Text style={s.liveText}>
+                    {status === 'live' ? 'Live — foreground SSE with resume' : status === 'connecting' ? 'Connecting realtime stream…' : 'Realtime stream degraded'}
+                </Text>
             </View>
 
             {/* Log Entries */}
@@ -141,8 +136,8 @@ export default function LogsScreen() {
                     )}
                     refreshControl={
                         <RefreshControl
-                            refreshing={dashboard.refreshing}
-                            onRefresh={dashboard.refresh}
+                            refreshing={status === 'connecting'}
+                            onRefresh={refreshSnapshot}
                             tintColor={colors.cyan}
                             colors={[colors.cyan]}
                             progressBackgroundColor={colors.bgCard}
@@ -153,7 +148,7 @@ export default function LogsScreen() {
                         <View style={s.empty}>
                             <Ionicons name="terminal-outline" size={48} color={colors.textDim} />
                             <Text style={s.emptyText}>
-                                {dashboard.error || 'No log entries. Waiting for system events...'}
+                                {error || 'No log entries. Waiting for system events...'}
                             </Text>
                         </View>
                     }

@@ -15,6 +15,9 @@ import {
     Image,
     RefreshControl,
     AppState,
+    ActivityIndicator,
+    FlatList,
+    Modal,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -42,6 +45,7 @@ import {
     cancelChatTurn,
     createChatSpecialistCandidate,
     fetchChatSpecialistCandidates,
+    fetchLlmModels,
     fetchChatThread,
     fetchChatPrefs,
     fetchRuntimeSettings,
@@ -65,6 +69,7 @@ import type {
     ChatSpecialistCandidateSuggestionRecord,
     ChatToolRunRecord,
     ChatWebMode,
+    LlmModelRecord,
     ProviderRecord,
 } from '../../../src/api/types';
 import {
@@ -98,6 +103,11 @@ export default function ChatThreadScreen() {
     const [showProviderPanel, setShowProviderPanel] = useState(false);
     const [selectedProvider, setSelectedProvider] = useState<string | undefined>();
     const [selectedModel, setSelectedModel] = useState<string | undefined>();
+    const [providerPanelStage, setProviderPanelStage] = useState<'providers' | 'models'>('providers');
+    const [providerPanelProviderId, setProviderPanelProviderId] = useState<string | undefined>();
+    const [providerModelsByProvider, setProviderModelsByProvider] = useState<Record<string, LlmModelRecord[]>>({});
+    const [providerModelsLoadingFor, setProviderModelsLoadingFor] = useState<string | undefined>();
+    const [providerModelsError, setProviderModelsError] = useState<string | undefined>();
     const [webMode, setWebMode] = useState<ChatWebMode>('auto');
     const [memoryMode, setMemoryMode] = useState<ChatMemoryMode>('auto');
     const [thinkingLevel, setThinkingLevel] = useState<ChatThinkingLevel>('standard');
@@ -129,6 +139,18 @@ export default function ChatThreadScreen() {
     const settings = useApiData(
         useCallback(() => fetchRuntimeSettings(), []),
     );
+    const providerRecords = settings.data?.llm.providers ?? [];
+    const activeProviderId = selectedProvider ?? settings.data?.llm.activeProviderId;
+    const activeModelId = selectedModel ?? settings.data?.llm.activeModel;
+    const providerPanelProvider = providerRecords.find((provider) => provider.providerId === providerPanelProviderId)
+        ?? providerRecords.find((provider) => provider.providerId === activeProviderId);
+    const providerModelOptions = React.useMemo(
+        () => providerPanelProvider
+            ? (providerModelsByProvider[providerPanelProvider.providerId]
+                ?? normalizeProviderModels([], providerPanelProvider.defaultModel))
+            : [],
+        [providerModelsByProvider, providerPanelProvider],
+    );
 
     const thread = useApiData<ChatThreadResponse>(
         useCallback(() => fetchChatThread(sessionId!), [sessionId]),
@@ -157,6 +179,64 @@ export default function ChatThreadScreen() {
         }).catch(() => { /* prefs may not exist yet for new sessions */ });
         return () => { cancelled = true; };
     }, [sessionId]);
+
+    const closeProviderPanel = useCallback(() => {
+        setShowProviderPanel(false);
+        setProviderPanelStage('providers');
+        setProviderModelsError(undefined);
+    }, []);
+
+    const loadProviderModels = useCallback(async (provider: ProviderRecord) => {
+        const cachedModels = providerModelsByProvider[provider.providerId];
+        if (cachedModels?.length) {
+            setProviderModelsError(undefined);
+            return cachedModels;
+        }
+
+        setProviderModelsLoadingFor(provider.providerId);
+        setProviderModelsError(undefined);
+        try {
+            const response = await fetchLlmModels(provider.providerId);
+            const nextModels = normalizeProviderModels(response.items, provider.defaultModel);
+            setProviderModelsByProvider((current) => ({
+                ...current,
+                [provider.providerId]: nextModels,
+            }));
+            return nextModels;
+        } catch (error) {
+            const fallbackModels = normalizeProviderModels([], provider.defaultModel);
+            if (fallbackModels.length > 0) {
+                setProviderModelsByProvider((current) => ({
+                    ...current,
+                    [provider.providerId]: fallbackModels,
+                }));
+            }
+            setProviderModelsError((error as Error).message || 'The provider model list could not be loaded.');
+            return fallbackModels;
+        } finally {
+            setProviderModelsLoadingFor((current) => current === provider.providerId ? undefined : current);
+        }
+    }, [providerModelsByProvider]);
+
+    const openProviderPanel = useCallback(() => {
+        setShowModeMenu(false);
+        setProviderPanelStage('providers');
+        setProviderPanelProviderId(activeProviderId);
+        setProviderModelsError(undefined);
+        setShowProviderPanel(true);
+    }, [activeProviderId]);
+
+    const handleProviderPress = useCallback((provider: ProviderRecord) => {
+        setProviderPanelProviderId(provider.providerId);
+        setProviderPanelStage('models');
+        void loadProviderModels(provider);
+    }, [loadProviderModels]);
+
+    const handleModelPress = useCallback((provider: ProviderRecord, modelId: string) => {
+        setSelectedProvider(provider.providerId);
+        setSelectedModel(modelId);
+        closeProviderPanel();
+    }, [closeProviderPanel]);
 
     const turns = thread.data?.turns ?? [];
     const specialistCandidates = specialistCandidatesState.data?.items ?? [];
@@ -724,7 +804,7 @@ export default function ChatThreadScreen() {
                             <Ionicons name="chevron-down" size={12} color={colors.textDim} />
                         </Pressable>
                     </View>
-                    <Pressable onPress={() => setShowProviderPanel(!showProviderPanel)} style={styles.backBtn}>
+                    <Pressable onPress={openProviderPanel} style={styles.backBtn}>
                         <Ionicons name="options" size={20} color={colors.textMuted} />
                     </Pressable>
                 </View>
@@ -754,32 +834,127 @@ export default function ChatThreadScreen() {
 
             {/* Provider/Model Panel */}
             {showProviderPanel ? (
-                <View style={styles.providerPanel}>
-                    <Text style={styles.providerPanelTitle}>PROVIDER / MODEL</Text>
-                    {settings.data?.llm.providers.map((p: ProviderRecord) => (
-                        <Pressable key={p.providerId}
-                            style={[styles.providerRow, selectedProvider === p.providerId && styles.providerRowActive]}
-                            onPress={() => {
-                                setSelectedProvider(p.providerId);
-                                setSelectedModel(p.defaultModel);
-                            }}>
-                            <View style={styles.providerDot} />
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.providerLabel}>{p.label}</Text>
-                                <Text style={styles.providerModel}>{p.defaultModel}</Text>
+                <Modal
+                    visible
+                    transparent
+                    animationType="fade"
+                    onRequestClose={closeProviderPanel}
+                >
+                    <View style={styles.providerModalRoot}>
+                        <Pressable style={styles.providerModalBackdrop} onPress={closeProviderPanel} />
+                        <View style={styles.providerModalCard}>
+                            <View style={styles.providerModalHeader}>
+                                <View style={styles.providerModalTitleWrap}>
+                                    <Text style={styles.providerPanelTitle}>
+                                        {providerPanelStage === 'providers' ? 'SELECT PROVIDER' : 'SELECT MODEL'}
+                                    </Text>
+                                    <Text style={styles.providerModalSubtitle}>
+                                        {providerPanelStage === 'providers'
+                                            ? 'Choose a provider first, then pick the model you want to use.'
+                                            : providerPanelProvider
+                                                ? `${providerPanelProvider.label} · current ${activeModelId || providerPanelProvider.defaultModel}`
+                                                : 'Choose the model for this provider.'}
+                                    </Text>
+                                </View>
+                                {providerPanelStage === 'models' ? (
+                                    <Pressable
+                                        onPress={() => {
+                                            setProviderPanelStage('providers');
+                                            setProviderModelsError(undefined);
+                                        }}
+                                        style={styles.providerStageAction}
+                                    >
+                                        <Ionicons name="chevron-back" size={18} color={colors.cyan} />
+                                    </Pressable>
+                                ) : null}
                             </View>
-                            {selectedProvider === p.providerId ? (
-                                <Ionicons name="checkmark" size={16} color={colors.cyan} />
-                            ) : null}
-                        </Pressable>
-                    ))}
-                    {(!settings.data || settings.data.llm.providers.length === 0) ? (
-                        <Text style={styles.providerEmpty}>No providers configured. Using defaults.</Text>
-                    ) : null}
-                    <Pressable style={styles.providerDone} onPress={() => setShowProviderPanel(false)}>
-                        <Text style={styles.providerDoneText}>DONE</Text>
-                    </Pressable>
-                </View>
+
+                            {providerPanelStage === 'providers' ? (
+                                <FlatList
+                                    data={providerRecords}
+                                    keyExtractor={(item) => item.providerId}
+                                    style={styles.providerList}
+                                    contentContainerStyle={providerRecords.length === 0 ? styles.providerListEmpty : undefined}
+                                    showsVerticalScrollIndicator
+                                    renderItem={({ item }) => {
+                                        const isActiveProvider = activeProviderId === item.providerId;
+                                        return (
+                                            <Pressable
+                                                style={[styles.providerRow, isActiveProvider && styles.providerRowActive]}
+                                                onPress={() => handleProviderPress(item)}
+                                            >
+                                                <View style={styles.providerDot} />
+                                                <View style={styles.providerRowContent}>
+                                                    <Text style={styles.providerLabel}>{item.label}</Text>
+                                                    <Text style={styles.providerModel}>{item.defaultModel}</Text>
+                                                </View>
+                                                {isActiveProvider ? (
+                                                    <Text style={styles.providerBadge}>CURRENT</Text>
+                                                ) : (
+                                                    <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
+                                                )}
+                                            </Pressable>
+                                        );
+                                    }}
+                                    ListEmptyComponent={
+                                        <Text style={styles.providerEmpty}>
+                                            No providers are configured on this gateway yet.
+                                        </Text>
+                                    }
+                                />
+                            ) : (
+                                <View style={styles.providerListStage}>
+                                    {providerModelsLoadingFor === providerPanelProvider?.providerId ? (
+                                        <View style={styles.providerLoadingState}>
+                                            <ActivityIndicator size="small" color={colors.cyan} />
+                                            <Text style={styles.providerLoadingText}>Loading models…</Text>
+                                        </View>
+                                    ) : null}
+                                    {providerModelsError ? (
+                                        <Text style={styles.providerWarningText}>{providerModelsError}</Text>
+                                    ) : null}
+                                    <FlatList
+                                        data={providerModelOptions}
+                                        keyExtractor={(item) => item.id}
+                                        style={styles.providerList}
+                                        contentContainerStyle={providerModelOptions.length === 0 ? styles.providerListEmpty : undefined}
+                                        showsVerticalScrollIndicator
+                                        renderItem={({ item }) => {
+                                            const isActiveModel = activeModelId === item.id;
+                                            return (
+                                                <Pressable
+                                                    style={[styles.providerRow, isActiveModel && styles.providerRowActive]}
+                                                    onPress={() => providerPanelProvider && handleModelPress(providerPanelProvider, item.id)}
+                                                    disabled={!providerPanelProvider}
+                                                >
+                                                    <View style={[styles.providerDot, styles.providerModelDot]} />
+                                                    <View style={styles.providerRowContent}>
+                                                        <Text style={styles.providerLabel}>{item.id}</Text>
+                                                        <Text style={styles.providerModel}>
+                                                            {item.ownedBy?.trim() || 'Provider catalog'}
+                                                        </Text>
+                                                    </View>
+                                                    {isActiveModel ? (
+                                                        <Ionicons name="checkmark" size={16} color={colors.cyan} />
+                                                    ) : null}
+                                                </Pressable>
+                                            );
+                                        }}
+                                        ListEmptyComponent={
+                                            <Text style={styles.providerEmpty}>
+                                                No models are available for this provider.
+                                            </Text>
+                                        }
+                                    />
+                                </View>
+                            )}
+
+                            <Pressable style={styles.providerDone} onPress={closeProviderPanel}>
+                                <Text style={styles.providerDoneText}>CLOSE</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </Modal>
             ) : null}
 
             {/* Thread */}
@@ -1415,6 +1590,33 @@ function modeDesc(m: ChatMode): string {
             : 'Software-focused workflow';
 }
 
+function normalizeProviderModels(items: LlmModelRecord[], defaultModel?: string): LlmModelRecord[] {
+    const normalized: LlmModelRecord[] = [];
+    const seen = new Set<string>();
+
+    const pushModel = (item: LlmModelRecord | null | undefined) => {
+        const id = item?.id?.trim();
+        if (!id || seen.has(id)) {
+            return;
+        }
+        seen.add(id);
+        normalized.push({
+            id,
+            ownedBy: item?.ownedBy,
+            created: item?.created,
+        });
+    };
+
+    for (const item of items) {
+        pushModel(item);
+    }
+    if (defaultModel?.trim()) {
+        pushModel({ id: defaultModel.trim() });
+    }
+
+    return normalized;
+}
+
 function isChatTurnBusyError(error: string): boolean {
     return /already (?:in progress|being generated|running)|wait for the current|turn is (?:still )?(?:active|running)|busy|concurrent.*turn/i.test(error);
 }
@@ -1706,11 +1908,17 @@ const styles = StyleSheet.create({
     modeMenuDesc: { ...typography.caption, color: colors.textDim },
 
     // Provider Panel
-    providerPanel: {
-        position: 'absolute',
-        top: 90,
-        left: 20,
-        right: 20,
+    providerModalRoot: {
+        flex: 1,
+        justifyContent: 'center',
+        paddingHorizontal: spacing.lg,
+    },
+    providerModalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(5, 8, 14, 0.72)',
+    },
+    providerModalCard: {
+        maxHeight: '72%',
         backgroundColor: colors.bgCardElevated,
         borderRadius: radii.md,
         borderWidth: 1,
@@ -1719,7 +1927,42 @@ const styles = StyleSheet.create({
         zIndex: 100,
         elevation: 10,
     },
-    providerPanelTitle: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.sm },
+    providerModalHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: spacing.md,
+        marginBottom: spacing.sm,
+    },
+    providerModalTitleWrap: {
+        flex: 1,
+        gap: 4,
+    },
+    providerPanelTitle: { ...typography.eyebrow, color: colors.textMuted },
+    providerModalSubtitle: {
+        ...typography.caption,
+        color: colors.textDim,
+        lineHeight: 18,
+    },
+    providerStageAction: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.bgCard,
+    },
+    providerListStage: {
+        flex: 1,
+        minHeight: 220,
+    },
+    providerList: {
+        flexGrow: 0,
+    },
+    providerListEmpty: {
+        flexGrow: 1,
+        justifyContent: 'center',
+    },
     providerRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1727,12 +1970,38 @@ const styles = StyleSheet.create({
         paddingVertical: spacing.sm,
         paddingHorizontal: spacing.sm,
         borderRadius: radii.sm,
+        marginBottom: spacing.xs,
     },
     providerRowActive: { backgroundColor: colors.cyanMuted },
     providerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success },
+    providerModelDot: { backgroundColor: colors.cyan },
+    providerRowContent: { flex: 1, gap: 2 },
     providerLabel: { ...typography.bodySm, color: colors.textPrimary, fontWeight: '600' },
     providerModel: { ...typography.caption, color: colors.textDim, fontFamily: 'monospace' },
     providerEmpty: { ...typography.bodySm, color: colors.textDim, fontStyle: 'italic', paddingVertical: spacing.sm },
+    providerBadge: {
+        ...typography.eyebrow,
+        color: colors.cyan,
+        fontSize: 9,
+    },
+    providerLoadingState: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        paddingHorizontal: spacing.sm,
+        paddingBottom: spacing.sm,
+    },
+    providerLoadingText: {
+        ...typography.caption,
+        color: colors.textDim,
+    },
+    providerWarningText: {
+        ...typography.caption,
+        color: colors.ember,
+        paddingHorizontal: spacing.sm,
+        paddingBottom: spacing.sm,
+        lineHeight: 18,
+    },
     providerDone: {
         alignItems: 'center',
         paddingVertical: spacing.sm,

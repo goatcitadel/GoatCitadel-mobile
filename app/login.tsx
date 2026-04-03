@@ -11,15 +11,21 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { deleteSecureItem, getSecureItem, setSecureItem } from '../src/utils/storage';
 import { colors, spacing, typography, radii } from '../src/theme/tokens';
 import {
+    clearGatewayAccessState,
     createDeviceAccessRequest,
+    exchangeCompanionSessionFromApprovedDevice,
+    getCompanionSession,
+    getGatewayUrl,
+    initializeStoredGatewayAccess,
     pollGatewayDeviceAccessRequestStatus,
+    persistGatewayAccessState,
     preflightGatewayAccess,
     setAuthToken,
+    setCompanionSession,
     setGatewayUrl,
 } from '../src/api/client';
 import type {
@@ -31,9 +37,6 @@ import type {
 } from '../src/api/types';
 import { useGatewayAccess } from '../src/context/GatewayAccessContext';
 import { deriveGatewayShellAccessState } from '../src/features/gateway/accessState';
-
-const STORE_KEY_URL = 'gc_gateway_url';
-const STORE_KEY_TOKEN = 'gc_auth_token';
 
 type AccessView = GatewayAccessPreflightResult | {
     status: 'idle' | 'checking';
@@ -49,9 +52,15 @@ type PendingDeviceApprovalRequest = DeviceAccessRequestCreateResponse & {
 
 export default function LoginScreen() {
     const router = useRouter();
+    const searchParams = useLocalSearchParams<{
+        url?: string | string[];
+        token?: string | string[];
+        label?: string | string[];
+        autoverify?: string | string[];
+    }>();
     const insets = useSafeAreaInsets();
     const { setAccessResult, reportAuthExpired } = useGatewayAccess();
-    const [url, setUrl] = useState('http://127.0.0.1:8787');
+    const [url, setUrl] = useState(getGatewayUrl());
     const [token, setToken] = useState('');
     const [showToken, setShowToken] = useState(false);
     const [access, setAccess] = useState<AccessView>({
@@ -68,12 +77,17 @@ export default function LoginScreen() {
     const logoOpacity = useRef(new Animated.Value(0)).current;
     const formY = useRef(new Animated.Value(30)).current;
     const formOpacity = useRef(new Animated.Value(0)).current;
+    const bootstrapConsumedRef = useRef(false);
 
     const approvalPending = pendingDeviceApproval?.status === 'pending';
     const shellAccess = useMemo(() => deriveGatewayShellAccessState(access), [access]);
+    const handleGatewayUrlChange = useCallback((nextUrl: string) => {
+        setUrl(nextUrl);
+        setGatewayUrl(nextUrl);
+    }, []);
     const authHint = useMemo(() => {
         if (access.status !== 'needs-auth') {
-            return 'Direct token access still works, but device approval is the safest way to connect this phone without copying long-lived credentials.';
+            return 'Use your computer LAN IP here, then verify access or request device approval. Direct token access still works, but device approval is the safest way to connect this phone without copying long-lived credentials.';
         }
         if (access.authMode === 'basic') {
             return 'This gateway uses browser-style basic auth. On mobile, the recommended path is to request approval from another authenticated GoatCitadel session.';
@@ -106,15 +120,6 @@ export default function LoginScreen() {
             ]),
         ]).start();
 
-        void (async () => {
-            const savedUrl = await getSecureItem(STORE_KEY_URL);
-            const savedToken = await getSecureItem(STORE_KEY_TOKEN);
-            const nextUrl = savedUrl || 'http://127.0.0.1:8787';
-            const nextToken = savedToken || '';
-            setUrl(nextUrl);
-            setToken(nextToken);
-            await runPreflight(nextUrl, nextToken, true);
-        })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -144,7 +149,15 @@ export default function LoginScreen() {
                 if (status.status === 'approved') {
                     if (status.deviceToken) {
                         setToken(status.deviceToken);
-                        await completeSuccessfulConnect(url, status.deviceToken);
+                        try {
+                            await exchangeCompanionSessionFromApprovedDevice(status.deviceToken, {
+                                clientName: deviceLabel.trim() || undefined,
+                            });
+                            await completeSuccessfulConnect(url);
+                        } catch (error) {
+                            setDeviceApprovalError(`Companion session bootstrap failed; using the approved device token directly. ${(error as Error).message}`);
+                            await completeSuccessfulConnect(url, status.deviceToken);
+                        }
                         return;
                     }
                     setDeviceApprovalError('Approval completed, but the one-time device token is no longer available. Reset the request and try again.');
@@ -153,8 +166,9 @@ export default function LoginScreen() {
 
                 if (status.status === 'rejected' || status.status === 'expired') {
                     setDeviceApprovalError(status.message);
-                    await deleteSecureItem(STORE_KEY_TOKEN);
-                    setAuthToken(undefined);
+                    setToken('');
+                    setGatewayUrl(url.trim());
+                    await clearGatewayAccessState();
                 }
             } catch (error) {
                 if (!cancelled) {
@@ -174,33 +188,36 @@ export default function LoginScreen() {
         };
     }, [pendingDeviceApproval?.status, pendingDeviceApproval?.requestId, pendingDeviceApproval?.requestSecret, pendingDeviceApproval?.pollAfterMs, url]);
 
-    const persistConnection = useCallback(async (nextUrl: string, nextToken?: string) => {
-        await setSecureItem(STORE_KEY_URL, nextUrl);
-        if (nextToken?.trim()) {
-            await setSecureItem(STORE_KEY_TOKEN, nextToken.trim());
-        } else {
-            await deleteSecureItem(STORE_KEY_TOKEN);
-        }
-    }, []);
-
     const completeSuccessfulConnect = useCallback(async (nextUrl: string, nextToken?: string) => {
         const trimmedUrl = nextUrl.trim();
         const trimmedToken = nextToken?.trim();
+        const activeCompanionSession = getCompanionSession();
+        const readyResult: GatewayAccessPreflightResult = {
+            status: 'ready',
+            message: 'Gateway access verified. Launching Mission Control Mobile…',
+        };
         setGatewayUrl(trimmedUrl);
-        setAuthToken(trimmedToken);
-        await persistConnection(trimmedUrl, trimmedToken);
+        if (activeCompanionSession) {
+            setAuthToken(undefined);
+        } else {
+            setCompanionSession(undefined);
+            setAuthToken(trimmedToken);
+        }
+        await persistGatewayAccessState({
+            gatewayUrl: trimmedUrl,
+            authToken: activeCompanionSession ? undefined : trimmedToken,
+            companionSession: activeCompanionSession,
+        });
         setPendingDeviceApproval(null);
         setDeviceApprovalError(null);
         setFormError(null);
-        setAccess({
-            status: 'ready',
-            message: 'Gateway access verified. Launching Mission Control Mobile…',
-        });
+        setAccess(readyResult);
+        setAccessResult(readyResult);
         if (Platform.OS !== 'web') {
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
         router.replace('/(tabs)');
-    }, [persistConnection, router]);
+    }, [router, setAccessResult]);
 
     const runPreflight = useCallback(async (
         nextUrl = url,
@@ -218,6 +235,9 @@ export default function LoginScreen() {
         setFormError(null);
         setDeviceApprovalError(null);
         setGatewayUrl(trimmedUrl);
+        if (trimmedToken) {
+            setCompanionSession(undefined);
+        }
         setAuthToken(trimmedToken || undefined);
         setAccess({
             status: 'checking',
@@ -238,6 +258,68 @@ export default function LoginScreen() {
         }
     }, [completeSuccessfulConnect, token, url]);
 
+    useEffect(() => {
+        const bootstrapUrl = readQueryParam(searchParams.url);
+        const bootstrapToken = readQueryParam(searchParams.token);
+        const bootstrapLabel = readQueryParam(searchParams.label);
+
+        // When the screen is opened from an adb/operator deep link, let that
+        // bootstrap path win and avoid racing it with stored gateway state.
+        if (bootstrapUrl || bootstrapToken || bootstrapLabel) {
+            return;
+        }
+
+        let cancelled = false;
+        void (async () => {
+            const storedAccess = await initializeStoredGatewayAccess();
+            if (cancelled || bootstrapConsumedRef.current) {
+                return;
+            }
+            const nextUrl = storedAccess.gatewayUrl;
+            const nextToken = storedAccess.authToken || '';
+            setUrl(nextUrl);
+            setToken(nextToken);
+            if (nextUrl.trim()) {
+                await runPreflight(nextUrl, nextToken, true);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [runPreflight, searchParams.label, searchParams.token, searchParams.url]);
+
+    useEffect(() => {
+        if (bootstrapConsumedRef.current) {
+            return;
+        }
+
+        const nextUrl = readQueryParam(searchParams.url);
+        const nextToken = readQueryParam(searchParams.token);
+        const nextLabel = readQueryParam(searchParams.label);
+        const autoverify = readQueryParam(searchParams.autoverify);
+
+        if (!nextUrl && !nextToken && !nextLabel) {
+            return;
+        }
+
+        bootstrapConsumedRef.current = true;
+
+        if (nextLabel) {
+            setDeviceLabel(nextLabel);
+        }
+        if (nextToken) {
+            setToken(nextToken);
+        }
+        if (nextUrl) {
+            handleGatewayUrlChange(nextUrl);
+        }
+
+        if (isTruthyQueryParam(autoverify) && nextUrl) {
+            void runPreflight(nextUrl, nextToken ?? token, true);
+        }
+    }, [handleGatewayUrlChange, runPreflight, searchParams.autoverify, searchParams.label, searchParams.token, searchParams.url, token]);
+
     const handleConnect = async () => {
         if (Platform.OS !== 'web') {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -255,6 +337,7 @@ export default function LoginScreen() {
         setFormError(null);
         setDeviceApprovalError(null);
         setGatewayUrl(trimmedUrl);
+        setCompanionSession(undefined);
         setAuthToken(undefined);
         setDeviceApprovalBusy(true);
 
@@ -363,9 +446,9 @@ export default function LoginScreen() {
                                         <TextInput
                                             style={s.input}
                                             value={url}
-                                            onChangeText={setUrl}
+                                            onChangeText={handleGatewayUrlChange}
                                             editable={!approvalPending}
-                                            placeholder="http://127.0.0.1:8787"
+                                            placeholder="http://192.168.0.10:8787"
                                             placeholderTextColor={colors.textDim}
                                             autoCapitalize="none"
                                             autoCorrect={false}
@@ -628,6 +711,21 @@ function inferPendingDeviceLabel(): string {
         return `${platform} phone`;
     }
     return platform || 'New device';
+}
+
+function readQueryParam(value: string | string[] | undefined): string | undefined {
+    if (Array.isArray(value)) {
+        return value.find((entry) => entry.trim().length > 0)?.trim();
+    }
+    return value?.trim() || undefined;
+}
+
+function isTruthyQueryParam(value: string | undefined): boolean {
+    if (!value) {
+        return false;
+    }
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 const s = StyleSheet.create({

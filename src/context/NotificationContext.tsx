@@ -1,13 +1,12 @@
 /**
  * GoatCitadel Mobile — Notification Center Context
  * Maintains an in-app notification feed with badge counts, read/unread state,
- * and auto-polling for new events from the gateway.
+ * and derives notifications from the shared realtime event stream.
  */
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { fetchDashboard, isGatewayAuthFailure } from '../api/client';
 import type { RealtimeEvent } from '../api/types';
 import { getRealtimeEventMeta } from '../utils/realtimeEvents';
-import { useGatewayAccess } from './GatewayAccessContext';
+import { useRealtimeEvents } from './RealtimeEventsContext';
 
 export interface Notification {
     id: string;
@@ -54,40 +53,20 @@ function eventToNotification(event: RealtimeEvent): Notification {
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const seenIdsRef = useRef(new Set<string>());
-    const hasSuccessfulPollRef = useRef(false);
-    const { reportAuthExpired, reportLiveUpdatesDegraded, reportLiveUpdatesHealthy } = useGatewayAccess();
+    const { events } = useRealtimeEvents();
 
     useEffect(() => {
-        const poll = async () => {
-            try {
-                const dashboard = await fetchDashboard();
-                hasSuccessfulPollRef.current = true;
-                reportLiveUpdatesHealthy();
-                const newNotifications: Notification[] = [];
-                for (const event of dashboard.recentEvents) {
-                    if (!seenIdsRef.current.has(event.eventId)) {
-                        seenIdsRef.current.add(event.eventId);
-                        newNotifications.push(eventToNotification(event));
-                    }
-                }
-                if (newNotifications.length > 0) {
-                    setNotifications(prev => [...newNotifications, ...prev].slice(0, 100));
-                }
-            } catch (error) {
-                if (isGatewayAuthFailure(error)) {
-                    reportAuthExpired('Gateway access expired while refreshing live updates.');
-                    return;
-                }
-                if (hasSuccessfulPollRef.current) {
-                    reportLiveUpdatesDegraded((error as Error).message);
-                }
+        const newNotifications: Notification[] = [];
+        for (const event of events) {
+            if (!seenIdsRef.current.has(event.eventId)) {
+                seenIdsRef.current.add(event.eventId);
+                newNotifications.push(eventToNotification(event));
             }
-        };
-
-        poll();
-        const interval = setInterval(poll, 15000);
-        return () => clearInterval(interval);
-    }, [reportAuthExpired, reportLiveUpdatesDegraded, reportLiveUpdatesHealthy]);
+        }
+        if (newNotifications.length > 0) {
+            setNotifications((prev) => [...newNotifications, ...prev].slice(0, 100));
+        }
+    }, [events]);
 
     const markRead = useCallback((id: string) => {
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));

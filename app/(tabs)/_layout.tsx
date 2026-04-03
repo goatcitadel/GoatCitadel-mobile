@@ -75,6 +75,8 @@ export default function TabLayout() {
             {/* Hidden tabs — accessible from More menu only */}
             <Tabs.Screen name="cowork" options={{ href: null }} />
             <Tabs.Screen name="code" options={{ href: null }} />
+            <Tabs.Screen name="canvas" options={{ href: null }} />
+            <Tabs.Screen name="parity" options={{ href: null }} />
             <Tabs.Screen name="pulse" options={{ href: null }} />
             <Tabs.Screen name="sessions" options={{ href: null }} />
             <Tabs.Screen name="settings" options={{ href: null }} />
