@@ -969,6 +969,8 @@ export default function ChatThreadScreen() {
                     keyExtractor={(t) => t.turnId}
                     renderItem={renderTurn}
                     contentContainerStyle={[styles.threadContent, { paddingBottom: threadBottomPad }]}
+                    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                    removeClippedSubviews={Platform.OS === 'android'}
                     refreshControl={
                         <RefreshControl
                             refreshing={thread.refreshing || specialistCandidatesState.refreshing}

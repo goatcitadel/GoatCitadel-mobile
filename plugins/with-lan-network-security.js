@@ -10,6 +10,11 @@ const NETWORK_SECURITY_XML = `<?xml version="1.0" encoding="utf-8"?>
 
 function withLanNetworkSecurity(config) {
     config = withAndroidManifest(config, (nextConfig) => {
+        const permissions = nextConfig.modResults.manifest['uses-permission'] ?? [];
+        nextConfig.modResults.manifest['uses-permission'] = permissions.filter((permission) => (
+            permission?.$?.['android:name'] !== 'android.permission.SYSTEM_ALERT_WINDOW'
+        ));
+
         const app = AndroidConfig.Manifest.getMainApplicationOrThrow(nextConfig.modResults);
         app.$['android:usesCleartextTraffic'] = 'true';
         app.$['android:networkSecurityConfig'] = '@xml/network_security_config';

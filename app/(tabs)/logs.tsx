@@ -2,7 +2,7 @@
  * GoatCitadel Mobile — System Logs Screen
  * Real-time log viewer with severity filtering and auto-scroll.
  */
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
     View, Text, Pressable, StyleSheet, RefreshControl,
 } from 'react-native';
@@ -52,8 +52,11 @@ export default function LogsScreen() {
     const [autoScroll, setAutoScroll] = useState(true);
     const listRef = useRef<any>(null);
     const { events, status, error, refreshSnapshot } = useRealtimeEvents();
-    const logs = events.map(eventToLog);
-    const filtered = filter === 'all' ? logs : logs.filter(l => l.level === filter);
+    const logs = useMemo(() => events.map(eventToLog), [events]);
+    const filtered = useMemo(
+        () => filter === 'all' ? logs : logs.filter((log) => log.level === filter),
+        [filter, logs],
+    );
 
     const levels: LogLevel[] = ['all', 'info', 'warn', 'error', 'debug'];
 
@@ -144,6 +147,7 @@ export default function LogsScreen() {
                         />
                     }
                     contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
+                    removeClippedSubviews
                     ListEmptyComponent={
                         <View style={s.empty}>
                             <Ionicons name="terminal-outline" size={48} color={colors.textDim} />

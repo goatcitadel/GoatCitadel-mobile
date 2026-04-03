@@ -2,7 +2,7 @@
  * GoatCitadel Mobile — Notification Center Screen
  * In-app notification feed with filtering, grouping, and swipe-to-dismiss.
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     View, Text, Pressable, StyleSheet, RefreshControl, Animated,
 } from 'react-native';
@@ -22,9 +22,12 @@ export default function NotificationsScreen() {
     const { notifications, unreadCount, markRead, markAllRead, clearAll } = useNotifications();
     const [filter, setFilter] = useState<FilterType>('all');
 
-    const filtered = filter === 'all'
-        ? notifications
-        : notifications.filter(n => n.type === filter);
+    const filtered = useMemo(
+        () => filter === 'all'
+            ? notifications
+            : notifications.filter((notification) => notification.type === filter),
+        [filter, notifications],
+    );
 
     const handlePress = (notification: Notification) => {
         markRead(notification.id);
@@ -113,6 +116,7 @@ export default function NotificationsScreen() {
                         </FadeIn>
                     )}
                     contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
+                    removeClippedSubviews
                     ListEmptyComponent={
                         <View style={s.empty}>
                             <Ionicons name="notifications-off-outline" size={48} color={colors.textDim} />

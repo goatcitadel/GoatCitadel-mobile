@@ -2,8 +2,8 @@
  * GoatCitadel Mobile — Bookmarks Screen
  * Save, organize, and quickly access favorite sessions and resources.
  */
-import React, { useState, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, RefreshControl, Alert } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import { View, Text, Pressable, StyleSheet, RefreshControl, Alert, Platform } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,20 +27,30 @@ export default function BookmarksScreen() {
     );
 
     const allSessions = sessions.data?.items ?? [];
-    const pinnedSessions = allSessions.filter(s => s.pinned);
-
-    // Recent = last 7 days
-    const recentCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const recentSessions = allSessions.filter(s =>
-        new Date(s.lastActivityAt).getTime() > recentCutoff
+    const pinnedSessions = useMemo(
+        () => allSessions.filter((session) => session.pinned),
+        [allSessions],
     );
 
-    const displaySessions = filter === 'pinned' ? pinnedSessions
-        : filter === 'recent' ? recentSessions : allSessions;
-
-    const sorted = [...displaySessions].sort(
-        (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime()
+    const recentSessions = useMemo(
+        () => {
+            const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            return allSessions.filter((session) => new Date(session.lastActivityAt).getTime() > cutoff);
+        },
+        [allSessions],
     );
+
+    const sorted = useMemo(() => {
+        const displaySessions = filter === 'pinned'
+            ? pinnedSessions
+            : filter === 'recent'
+                ? recentSessions
+                : allSessions;
+
+        return [...displaySessions].sort(
+            (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
+        );
+    }, [allSessions, filter, pinnedSessions, recentSessions]);
 
     const filters: { label: string; value: BookmarkFilter; count: number }[] = [
         { label: 'All', value: 'all', count: allSessions.length },
@@ -123,6 +133,7 @@ export default function BookmarksScreen() {
                         />
                     }
                     contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
+                    removeClippedSubviews={Platform.OS === 'android'}
                     ListEmptyComponent={
                         <View style={s.empty}>
                             <Ionicons name="bookmarks-outline" size={48} color={colors.textDim} />

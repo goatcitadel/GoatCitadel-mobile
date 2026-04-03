@@ -1,7 +1,7 @@
 /**
  * GoatCitadel Mobile — Chat Session List
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
     View,
     Text,
@@ -36,19 +36,21 @@ export default function ChatSessionListScreen() {
         { pollMs: 10000 },
     );
 
-    const filtered = (sessions.data?.items ?? []).filter((s) => {
-        if (!search.trim()) return true;
-        const q = search.toLowerCase();
-        return (
-            (s.title ?? '').toLowerCase().includes(q) ||
-            s.sessionId.toLowerCase().includes(q) ||
-            (s.projectName ?? '').toLowerCase().includes(q)
-        );
-    });
+    const sorted = useMemo(() => {
+        const filtered = (sessions.data?.items ?? []).filter((s) => {
+            if (!search.trim()) return true;
+            const q = search.toLowerCase();
+            return (
+                (s.title ?? '').toLowerCase().includes(q) ||
+                s.sessionId.toLowerCase().includes(q) ||
+                (s.projectName ?? '').toLowerCase().includes(q)
+            );
+        });
 
-    const sorted = [...filtered].sort(
-        (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
-    );
+        return [...filtered].sort(
+            (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
+        );
+    }, [search, sessions.data?.items]);
 
     const handleNewSession = async () => {
         try {
@@ -109,6 +111,7 @@ export default function ChatSessionListScreen() {
                         />
                     }
                     contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad }]}
+                    removeClippedSubviews={Platform.OS === 'android'}
                     ListEmptyComponent={
                         sessions.loading ? null : (
                             <View style={styles.emptyState}>
