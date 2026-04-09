@@ -6,6 +6,7 @@ import { View, Text, FlatList, StyleSheet, RefreshControl, Pressable } from 'rea
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GCHeader, GCCard, GCStatusChip } from '../../src/components/ui';
+import { AdaptiveContainer } from '../../src/components/layout';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
@@ -23,7 +24,7 @@ const GOAT_COLORS: Record<string, string> = {
 };
 
 export default function HerdScreen() {
-    const { isTablet } = useLayout();
+    const layout = useLayout();
     const bottomPad = useBottomInsetPadding(32);
     const agents = useApiData<{ items: AgentProfileRecord[] }>(
         useCallback(() => fetchAgents(), []),
@@ -36,19 +37,21 @@ export default function HerdScreen() {
         <View style={s.safe} >
             <GCHeader eyebrow="Herd HQ" title="The Herd"
                 subtitle={`${items.length} agents · ${active.length} active`} />
-            <FlatList data={items} keyExtractor={(a) => a.agentId}
-                numColumns={isTablet ? 3 : 2}
-                columnWrapperStyle={s.gridRow}
-                renderItem={({ item }) => <AgentCard agent={item} />}
-                refreshControl={<RefreshControl refreshing={agents.refreshing} onRefresh={agents.refresh}
-                    tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />}
-                contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
-                ListEmptyComponent={agents.loading ? null : (
-                    <View style={s.empty}>
-                        <Ionicons name="people-outline" size={48} color={colors.textDim} />
-                        <Text style={s.emptyText}>{agents.error || 'No agents found.'}</Text>
-                    </View>
-                )} />
+            <AdaptiveContainer style={s.content}>
+                <FlatList data={items} keyExtractor={(a) => a.agentId}
+                    numColumns={layout.triplePane ? 4 : layout.dualPane ? 3 : 2}
+                    columnWrapperStyle={s.gridRow}
+                    renderItem={({ item }) => <AgentCard agent={item} />}
+                    refreshControl={<RefreshControl refreshing={agents.refreshing} onRefresh={agents.refresh}
+                        tintColor={colors.cyan} colors={[colors.cyan]} progressBackgroundColor={colors.bgCard} />}
+                    contentContainerStyle={[s.list, { paddingBottom: bottomPad }]}
+                    ListEmptyComponent={agents.loading ? null : (
+                        <View style={s.empty}>
+                            <Ionicons name="people-outline" size={48} color={colors.textDim} />
+                            <Text style={s.emptyText}>{agents.error || 'No agents found.'}</Text>
+                        </View>
+                    )} />
+            </AdaptiveContainer>
         </View>
     );
 }
@@ -84,7 +87,8 @@ function AgentCard({ agent }: { agent: AgentProfileRecord }) {
 
 const s = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
-    list: { paddingHorizontal: spacing.md, paddingBottom: 32 },
+    content: { flex: 1 },
+    list: { paddingBottom: 32 },
     gridRow: { gap: spacing.md, marginBottom: spacing.md },
     card: { flex: 1, alignItems: 'center', paddingVertical: spacing.xl },
     avatarCircle: {

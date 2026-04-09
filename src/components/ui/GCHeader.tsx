@@ -5,6 +5,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLayout } from '../../hooks/useLayout';
 import { colors, spacing, typography } from '../../theme/tokens';
 
 interface Props {
@@ -17,13 +18,24 @@ interface Props {
 
 export function GCHeader({ eyebrow, title, subtitle, right, style }: Props) {
     const insets = useSafeAreaInsets();
+    const layout = useLayout();
     const topPad = Math.max(insets.top, spacing.xl);
 
     return (
-        <View style={[styles.container, { paddingTop: topPad + spacing.sm }, style]}>
+        <View
+            style={[
+                styles.container,
+                {
+                    paddingTop: topPad + spacing.sm,
+                    paddingHorizontal: layout.gutter,
+                    paddingBottom: layout.isTablet ? spacing.xl : spacing.lg,
+                },
+                style,
+            ]}
+        >
             <View style={styles.main}>
                 {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-                <Text style={styles.title}>{title}</Text>
+                <Text style={[styles.title, layout.isTablet && styles.titleTablet]}>{title}</Text>
                 {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
             </View>
             {right ? <View style={styles.right}>{right}</View> : null}
@@ -36,8 +48,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        paddingHorizontal: spacing.xl,
-        paddingBottom: spacing.lg,
     },
     main: {
         flex: 1,
@@ -52,6 +62,10 @@ const styles = StyleSheet.create({
         ...typography.displayLg,
         color: colors.textPrimary,
         textTransform: 'uppercase',
+    },
+    titleTablet: {
+        fontSize: 30,
+        lineHeight: 34,
     },
     subtitle: {
         ...typography.bodySm,

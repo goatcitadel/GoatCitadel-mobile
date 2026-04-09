@@ -72,8 +72,8 @@ const styles = StyleSheet.create({
 });
 
 const sizeStyles: Record<string, ViewStyle> = {
-    sm: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, minHeight: 32 },
-    md: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, minHeight: 40 },
+    sm: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, minHeight: 36 },
+    md: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, minHeight: 44 },
     lg: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md, minHeight: 48 },
 };
 

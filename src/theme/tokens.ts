@@ -131,6 +131,24 @@ export const typography = {
     },
 } as const;
 
-/** Breakpoint for tablet layouts (Tab S9 Ultra is ~1848dp wide in landscape) */
+/**
+ * Adaptive breakpoints are based on usability rather than raw width-only scaling.
+ * Tablet detection uses shortest side so large phones in landscape remain in phone mode.
+ */
 export const TABLET_BREAKPOINT = 600;
-export const TABLET_WIDE_BREAKPOINT = 900;
+export const DUAL_PANE_MIN_WIDTH = 760;
+export const TABLET_WIDE_BREAKPOINT = 1100;
+
+export const adaptiveLayout = {
+    maxContentWidth: 1600,
+    maxReadableWidth: 760,
+    railWidth: 96,
+    masterPaneWidth: 340,
+    inspectorPaneWidth: 320,
+    contentGutterPhone: spacing.xl,
+    contentGutterTablet: 28,
+    contentGutterWideTablet: 32,
+    sectionGapPhone: spacing.lg,
+    sectionGapTablet: spacing.xl,
+    sectionGapWideTablet: spacing.xxl,
+} as const;

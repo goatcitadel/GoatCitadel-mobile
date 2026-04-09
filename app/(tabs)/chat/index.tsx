@@ -1,17 +1,16 @@
 /**
  * GoatCitadel Mobile — Chat Session List
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    View,
+    Animated,
+    Platform,
+    Pressable,
+    RefreshControl,
+    StyleSheet,
     Text,
     TextInput,
-    Pressable,
-    StyleSheet,
-    RefreshControl,
-    Animated,
-    Alert,
-    Platform,
+    View,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import * as Haptics from 'expo-haptics';
@@ -19,16 +18,21 @@ import { useToast } from '../../../src/context/ToastContext';
 import { useRouter } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
+import { AdaptiveContainer, ContextPane, MasterDetailShell } from '../../../src/components/layout';
 import { GCHeader, GCButton } from '../../../src/components/ui';
 import { colors, spacing, typography, radii } from '../../../src/theme/tokens';
 import { useApiData } from '../../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../../src/hooks/useBottomInsetPadding';
+import { useLayout } from '../../../src/hooks/useLayout';
 import { fetchChatSessions, createChatSession, deleteChatSession } from '../../../src/api/client';
 import type { ChatSessionRecord } from '../../../src/api/types';
+import { SessionDetailPane } from '../../../src/features/chat/SessionDetailPane';
 
 export default function ChatSessionListScreen() {
     const router = useRouter();
+    const layout = useLayout();
     const [search, setSearch] = useState('');
+    const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
     const bottomPad = useBottomInsetPadding(32);
 
     const sessions = useApiData<{ items: ChatSessionRecord[] }>(
@@ -37,13 +41,13 @@ export default function ChatSessionListScreen() {
     );
 
     const sorted = useMemo(() => {
-        const filtered = (sessions.data?.items ?? []).filter((s) => {
+        const filtered = (sessions.data?.items ?? []).filter((session) => {
             if (!search.trim()) return true;
             const q = search.toLowerCase();
             return (
-                (s.title ?? '').toLowerCase().includes(q) ||
-                s.sessionId.toLowerCase().includes(q) ||
-                (s.projectName ?? '').toLowerCase().includes(q)
+                (session.title ?? '').toLowerCase().includes(q) ||
+                session.sessionId.toLowerCase().includes(q) ||
+                (session.projectName ?? '').toLowerCase().includes(q)
             );
         });
 
@@ -51,6 +55,18 @@ export default function ChatSessionListScreen() {
             (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
         );
     }, [search, sessions.data?.items]);
+    const selectedSession = sorted.find((item) => item.sessionId === selectedSessionId) ?? sorted[0];
+
+    useEffect(() => {
+        if (!layout.dualPane) {
+            return;
+        }
+        if (sorted.length > 0 && !selectedSessionId) {
+            setSelectedSessionId(sorted[0].sessionId);
+        } else if (selectedSessionId && !sorted.some((item) => item.sessionId === selectedSessionId)) {
+            setSelectedSessionId(sorted[0]?.sessionId);
+        }
+    }, [layout.dualPane, selectedSessionId, sorted]);
 
     const handleNewSession = async () => {
         try {
@@ -61,8 +77,52 @@ export default function ChatSessionListScreen() {
         }
     };
 
+    const listComponent = (
+        <ContextPane style={styles.listPane}>
+            <FlashList
+                data={sorted}
+                keyExtractor={(item) => item.sessionId}
+                renderItem={({ item }) => (
+                    <MemoizedSessionRow
+                        session={item}
+                        selected={item.sessionId === selectedSession?.sessionId && layout.dualPane}
+                        onPress={() => {
+                            if (layout.dualPane) {
+                                setSelectedSessionId(item.sessionId);
+                                return;
+                            }
+                            router.push(`/(tabs)/chat/${item.sessionId}`);
+                        }}
+                        onDelete={sessions.refresh}
+                    />
+                )}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={sessions.refreshing}
+                        onRefresh={sessions.refresh}
+                        tintColor={colors.cyan}
+                        colors={[colors.cyan]}
+                        progressBackgroundColor={colors.bgCard}
+                    />
+                }
+                contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad }]}
+                removeClippedSubviews={Platform.OS === 'android'}
+                ListEmptyComponent={
+                    sessions.loading ? null : (
+                        <View style={styles.emptyState}>
+                            <Ionicons name="chatbubble-ellipses-outline" size={48} color={colors.textDim} />
+                            <Text style={styles.emptyText}>
+                                {sessions.error ? sessions.error : 'No sessions yet. Start a new chat.'}
+                            </Text>
+                        </View>
+                    )
+                }
+            />
+        </ContextPane>
+    );
+
     return (
-        <View style={styles.safe} >
+        <View style={styles.safe}>
             <GCHeader
                 eyebrow="Chat Workspace"
                 title="Sessions"
@@ -72,75 +132,58 @@ export default function ChatSessionListScreen() {
                 }
             />
 
-            {/* Search */}
-            <View style={styles.searchBar}>
-                <Ionicons name="search" size={16} color={colors.textDim} />
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search sessions…"
-                    placeholderTextColor={colors.textDim}
-                    value={search}
-                    onChangeText={setSearch}
-                    autoCorrect={false}
-                />
-                {search ? (
-                    <Pressable onPress={() => setSearch('')}>
-                        <Ionicons name="close-circle" size={18} color={colors.textDim} />
-                    </Pressable>
-                ) : null}
-            </View>
+            <AdaptiveContainer style={styles.content}>
+                <View style={styles.searchBar}>
+                    <Ionicons name="search" size={16} color={colors.textDim} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Search sessions…"
+                        placeholderTextColor={colors.textDim}
+                        value={search}
+                        onChangeText={setSearch}
+                        autoCorrect={false}
+                    />
+                    {search ? (
+                        <Pressable onPress={() => setSearch('')}>
+                            <Ionicons name="close-circle" size={18} color={colors.textDim} />
+                        </Pressable>
+                    ) : null}
+                </View>
 
-            <View style={{ flex: 1 }}>
-                <FlashList
-                    data={sorted}
-                    keyExtractor={(item) => item.sessionId}
-                    renderItem={({ item }) => (
-                        <MemoizedSessionRow
-                            session={item}
-                            onPress={() => router.push(`/(tabs)/chat/${item.sessionId}`)}
-                            onDelete={sessions.refresh}
-                        />
-                    )}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={sessions.refreshing}
-                            onRefresh={sessions.refresh}
-                            tintColor={colors.cyan}
-                            colors={[colors.cyan]}
-                            progressBackgroundColor={colors.bgCard}
-                        />
-                    }
-                    contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad }]}
-                    removeClippedSubviews={Platform.OS === 'android'}
-                    ListEmptyComponent={
-                        sessions.loading ? null : (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="chatbubble-ellipses-outline" size={48} color={colors.textDim} />
-                                <Text style={styles.emptyText}>
-                                    {sessions.error ? sessions.error : 'No sessions yet. Start a new chat.'}
-                                </Text>
-                            </View>
-                        )
-                    }
-                />
-            </View>
+                {layout.dualPane ? (
+                    <MasterDetailShell
+                        style={styles.shell}
+                        master={listComponent}
+                        detail={(
+                            <SessionDetailPane
+                                heading="Selected session"
+                                session={selectedSession}
+                                onOpen={(session) => router.push(`/(tabs)/chat/${session.sessionId}`)}
+                                emptyBody="Use the left rail to pick a session, then open the live thread view."
+                            />
+                        )}
+                    />
+                ) : listComponent}
+            </AdaptiveContainer>
         </View>
     );
 }
 
 function SessionRow({
     session,
+    selected,
     onPress,
     onDelete,
 }: {
     session: ChatSessionRecord;
+    selected?: boolean;
     onPress: () => void;
     onDelete: () => void;
 }) {
     const timeAgo = getRelativeTime(session.lastActivityAt);
     const { showToast } = useToast();
 
-    const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const renderRightActions = (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
         const trans = dragX.interpolate({ inputRange: [-100, -50, 0], outputRange: [0, 0, 20], extrapolate: 'clamp' });
         const opacity = dragX.interpolate({ inputRange: [-100, -50, 0], outputRange: [1, 1, 0], extrapolate: 'clamp' });
         return (
@@ -172,7 +215,11 @@ function SessionRow({
             rightThreshold={40}
         >
             <Pressable
-                style={({ pressed }) => [styles.sessionRow, pressed && styles.sessionRowPressed]}
+                style={({ pressed }) => [
+                    styles.sessionRow,
+                    selected && styles.sessionRowSelected,
+                    pressed && styles.sessionRowPressed,
+                ]}
                 onPress={onPress}
             >
                 <View style={styles.sessionIcon}>
@@ -196,7 +243,7 @@ function SessionRow({
                 {session.pinned ? (
                     <Ionicons name="pin" size={14} color={colors.ember} style={{ marginRight: 4 }} />
                 ) : null}
-                <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
+                <Ionicons name="chevron-forward" size={16} color={selected ? colors.cyan : colors.textDim} />
             </Pressable>
         </Swipeable>
     );
@@ -206,7 +253,8 @@ const MemoizedSessionRow = React.memo(SessionRow, (prev, next) => {
     return prev.session.sessionId === next.session.sessionId &&
         prev.session.lastActivityAt === next.session.lastActivityAt &&
         prev.session.pinned === next.session.pinned &&
-        prev.session.title === next.session.title;
+        prev.session.title === next.session.title &&
+        prev.selected === next.selected;
 });
 
 function getRelativeTime(iso: string): string {
@@ -222,11 +270,13 @@ function getRelativeTime(iso: string): string {
 
 const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
+    content: { flex: 1, paddingBottom: spacing.lg },
+    shell: { flex: 1 },
+    listPane: { flex: 1, padding: 0, overflow: 'hidden' },
     searchBar: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: spacing.sm,
-        marginHorizontal: spacing.xl,
         marginBottom: spacing.md,
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.sm,
@@ -241,16 +291,17 @@ const styles = StyleSheet.create({
         ...typography.bodyMd,
         paddingVertical: 0,
     },
-    listContent: { paddingBottom: 32 },
+    listContent: { paddingVertical: spacing.sm },
     sessionRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: spacing.xl,
+        paddingHorizontal: spacing.lg,
         paddingVertical: spacing.md,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: colors.borderQuiet,
         gap: spacing.md,
     },
+    sessionRowSelected: { backgroundColor: colors.cyanMuted },
     sessionRowPressed: { backgroundColor: colors.bgPanelSolid },
     sessionIcon: {
         width: 36,
@@ -271,6 +322,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: spacing.sm,
         marginTop: 2,
+        flexWrap: 'wrap',
     },
     sessionProject: {
         ...typography.caption,
@@ -278,7 +330,6 @@ const styles = StyleSheet.create({
         opacity: 0.7,
     },
     sessionTime: { ...typography.caption, color: colors.textDim },
-
     emptyState: {
         alignItems: 'center',
         justifyContent: 'center',
@@ -287,10 +338,11 @@ const styles = StyleSheet.create({
     },
     emptyText: { ...typography.bodyMd, color: colors.textDim, textAlign: 'center', maxWidth: 260 },
     actionDelete: {
-        flex: 1, backgroundColor: colors.crimson, justifyContent: 'center', alignItems: 'flex-end',
+        flex: 1,
+        backgroundColor: colors.crimson,
+        justifyContent: 'center',
+        alignItems: 'flex-end',
         paddingRight: spacing.xl,
     },
-    actionText: {
-        ...typography.eyebrow, color: colors.bgCore, marginTop: 4,
-    },
+    actionText: { ...typography.eyebrow, color: colors.bgCore, marginTop: 4 },
 });

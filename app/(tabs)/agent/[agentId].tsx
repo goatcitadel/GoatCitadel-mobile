@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import {
     GCHeader, GCCard, GCStatusChip, GCButton, FadeIn, PulseDot,
 } from '../../../src/components/ui';
+import { AdaptiveContainer, SectionGrid } from '../../../src/components/layout';
 import { colors, spacing, typography, radii } from '../../../src/theme/tokens';
 import { useApiData } from '../../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../../src/hooks/useBottomInsetPadding';
@@ -71,6 +72,7 @@ export default function AgentDetailScreen() {
                     />
                 }
             >
+                <AdaptiveContainer>
                 {/* Avatar and Identity */}
                 <FadeIn delay={100}>
                     <GCCard style={s.profileCard}>
@@ -95,7 +97,7 @@ export default function AgentDetailScreen() {
 
                 {/* Stats Grid */}
                 <FadeIn delay={200}>
-                    <View style={s.statsGrid}>
+                    <SectionGrid style={s.statsGrid} minItemWidthPhone={120} minItemWidthTablet={200}>
                         <View style={s.statItem}>
                             <Text style={s.statValue}>{agent.sessionCount}</Text>
                             <Text style={s.statLabel}>Total Sessions</Text>
@@ -118,7 +120,7 @@ export default function AgentDetailScreen() {
                             />
                             <Text style={s.statLabel}>{agent.isBuiltin ? 'Builtin' : 'Custom'}</Text>
                         </View>
-                    </View>
+                    </SectionGrid>
                 </FadeIn>
 
                 {/* Specialties */}
@@ -156,6 +158,7 @@ export default function AgentDetailScreen() {
                 </FadeIn>
 
                 <View style={{ height: 32 }} />
+                </AdaptiveContainer>
             </ScrollView>
         </View>
     );
@@ -163,7 +166,7 @@ export default function AgentDetailScreen() {
 
 const s = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
-    content: { paddingHorizontal: spacing.xl, paddingBottom: 32 },
+    content: { paddingBottom: 32 },
     empty: { alignItems: 'center', paddingTop: 80, gap: spacing.md },
     emptyText: { ...typography.bodyMd, color: colors.textDim },
 
@@ -180,10 +183,7 @@ const s = StyleSheet.create({
     statusContainer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
     summary: { ...typography.bodyMd, color: colors.textSecondary, lineHeight: 22 },
 
-    statsGrid: {
-        flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md,
-        marginBottom: spacing.lg,
-    },
+    statsGrid: { marginBottom: spacing.lg },
     statItem: {
         flex: 1, minWidth: 80, backgroundColor: colors.bgCard,
         borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderCyan,

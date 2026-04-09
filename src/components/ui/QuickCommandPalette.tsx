@@ -9,12 +9,14 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useLayout } from '../../hooks/useLayout';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, typography, radii } from '../../theme/tokens';
 import { useQuickCommand, QuickCommand } from '../../context/QuickCommandContext';
 
 export function QuickCommandPalette() {
     const router = useRouter();
+    const layout = useLayout();
     const { isOpen, close, commands } = useQuickCommand();
     const [query, setQuery] = useState('');
     const slideAnim = useRef(new Animated.Value(0)).current;
@@ -92,7 +94,16 @@ export function QuickCommandPalette() {
                 pointerEvents="box-none"
             >
                 <Animated.View
-                    style={[s.palette, { opacity: slideAnim, transform: [{ translateY }] }]}
+                    style={[
+                        s.palette,
+                        {
+                            opacity: slideAnim,
+                            transform: [{ translateY }],
+                            alignSelf: 'center',
+                            width: '100%',
+                            maxWidth: layout.isTablet ? 720 : undefined,
+                        },
+                    ]}
                 >
                     {/* Search Input */}
                     <View style={s.searchRow}>

@@ -5,11 +5,17 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, typography } from '../../src/theme/tokens';
+import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
+import { useLayout } from '../../src/hooks/useLayout';
+import { adaptiveLayout, colors, typography } from '../../src/theme/tokens';
 
 export default function TabLayout() {
     const insets = useSafeAreaInsets();
-    const bottomPad = Math.max(insets.bottom, 20);
+    const layout = useLayout();
+    const bottomInset = useBottomInsetPadding(0, { androidFallbackInset: 20 });
+    const bottomPad = Math.max(bottomInset, 20);
+    const sidebarPad = Math.max(insets.top, 16);
+    const isSidebar = layout.navMode === 'sidebar';
 
     return (
         <Tabs
@@ -17,14 +23,30 @@ export default function TabLayout() {
                 headerShown: false,
                 tabBarStyle: {
                     ...styles.tabBar,
-                    height: 56 + bottomPad,
-                    paddingBottom: bottomPad,
+                    ...(isSidebar
+                        ? {
+                            width: adaptiveLayout.railWidth,
+                            paddingTop: sidebarPad,
+                            paddingBottom: Math.max(insets.bottom, 16),
+                            borderTopWidth: 0,
+                            borderRightWidth: 1,
+                            borderRightColor: colors.tabBarBorder,
+                        }
+                        : {
+                            height: 56 + bottomPad,
+                            paddingBottom: bottomPad,
+                        }),
                 },
+                tabBarPosition: isSidebar ? 'left' : 'bottom',
+                tabBarVariant: isSidebar ? 'material' : 'uikit',
                 tabBarActiveTintColor: colors.tabActive,
                 tabBarInactiveTintColor: colors.tabInactive,
                 tabBarLabelStyle: styles.tabLabel,
-                tabBarItemStyle: styles.tabItem,
+                tabBarItemStyle: isSidebar ? styles.tabItemSidebar : styles.tabItem,
                 tabBarHideOnKeyboard: Platform.OS === 'android',
+                sceneStyle: {
+                    backgroundColor: colors.bgCore,
+                },
             }}
         >
             <Tabs.Screen
@@ -110,5 +132,8 @@ const styles = StyleSheet.create({
     },
     tabItem: {
         paddingTop: 4,
+    },
+    tabItemSidebar: {
+        paddingVertical: 10,
     },
 });

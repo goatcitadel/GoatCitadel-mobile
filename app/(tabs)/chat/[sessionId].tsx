@@ -2,7 +2,7 @@
  * GoatCitadel Mobile — Chat Thread Screen
  * The centerpiece of the app — premium streaming chat with traces.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -38,13 +38,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
+import { AdaptiveContainer, ContextPane, MasterDetailShell } from '../../../src/components/layout';
 import { colors, spacing, typography, radii } from '../../../src/theme/tokens';
 import { TypingIndicator, SkeletonBlock } from '../../../src/components/ui';
 import { useApiData } from '../../../src/hooks/useApiData';
+import { useBottomInsetPadding } from '../../../src/hooks/useBottomInsetPadding';
+import { useLayout } from '../../../src/hooks/useLayout';
 import {
     cancelChatTurn,
     createChatSpecialistCandidate,
     fetchChatSpecialistCandidates,
+    fetchChatSessions,
     fetchLlmModels,
     fetchChatThread,
     fetchChatPrefs,
@@ -67,6 +71,7 @@ import type {
     ChatSpecialistCandidatePatchInput,
     ChatSpecialistCandidateRecord,
     ChatSpecialistCandidateSuggestionRecord,
+    ChatSessionRecord,
     ChatToolRunRecord,
     ChatWebMode,
     LlmModelRecord,
@@ -93,6 +98,7 @@ import { useGatewayAccess } from '../../../src/context/GatewayAccessContext';
 export default function ChatThreadScreen() {
     const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
     const router = useRouter();
+    const layout = useLayout();
     const flatListRef = useRef<any>(null);
     const { showToast } = useToast();
     const { shellState, refreshAccess, reportAuthExpired } = useGatewayAccess();
@@ -155,6 +161,10 @@ export default function ChatThreadScreen() {
     const thread = useApiData<ChatThreadResponse>(
         useCallback(() => fetchChatThread(sessionId!), [sessionId]),
         { enabled: !!sessionId },
+    );
+    const sessionsState = useApiData<{ items: ChatSessionRecord[] }>(
+        useCallback(() => fetchChatSessions(), []),
+        { enabled: layout.dualPane, pollMs: 10000 },
     );
 
     const specialistCandidatesState = useApiData<{ items: ChatSpecialistCandidateRecord[] }>(
@@ -239,6 +249,12 @@ export default function ChatThreadScreen() {
     }, [closeProviderPanel]);
 
     const turns = thread.data?.turns ?? [];
+    const orderedSessions = useMemo(
+        () => [...(sessionsState.data?.items ?? [])].sort(
+            (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
+        ),
+        [sessionsState.data?.items],
+    );
     const specialistCandidates = specialistCandidatesState.data?.items ?? [];
     const visibleSpecialistCandidates = React.useMemo(
         () => specialistCandidates.filter((item) => item.status !== 'retired'),
@@ -783,8 +799,129 @@ export default function ChatThreadScreen() {
 
     const insets = useSafeAreaInsets();
     const topPad = Math.max(insets.top, spacing.xl);
-    const threadBottomPad = insets.bottom + 20;
-    const composerBottomPad = insets.bottom + (Platform.OS === 'android' ? spacing.sm : spacing.lg);
+    const threadBottomPad = useBottomInsetPadding(20);
+    const composerBottomPad = useBottomInsetPadding(
+        Platform.OS === 'android' ? spacing.sm : spacing.lg,
+    );
+    const showInlineSpecialistPanel = shouldShowSpecialistPanel && !layout.triplePane;
+    const showInlineQueueStatus = (isBusy || runtime.queuedMessages.length > 0) && !layout.triplePane;
+
+    const sessionRail = (
+        <ContextPane style={styles.sessionRailPane}>
+            <Text style={styles.sessionRailTitle}>Recent sessions</Text>
+            <FlatList
+                data={orderedSessions}
+                keyExtractor={(item) => item.sessionId}
+                contentContainerStyle={styles.sessionRailList}
+                renderItem={({ item }) => {
+                    const selected = item.sessionId === sessionId;
+                    return (
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.sessionRailRow,
+                                selected && styles.sessionRailRowSelected,
+                                pressed && styles.sessionRailRowPressed,
+                            ]}
+                            onPress={() => router.replace(`/(tabs)/chat/${item.sessionId}`)}
+                        >
+                            <View style={styles.sessionRailIcon}>
+                                <Ionicons
+                                    name={item.scope === 'external' ? 'globe-outline' : 'chatbubble'}
+                                    size={16}
+                                    color={colors.cyan}
+                                />
+                            </View>
+                            <View style={styles.sessionRailCopy}>
+                                <Text style={styles.sessionRailLabel} numberOfLines={1}>
+                                    {item.title || 'Untitled session'}
+                                </Text>
+                                <Text style={styles.sessionRailMeta} numberOfLines={1}>
+                                    {(item.projectName ? `${item.projectName} · ` : '') + getRelativeTime(item.lastActivityAt)}
+                                </Text>
+                            </View>
+                        </Pressable>
+                    );
+                }}
+                ListEmptyComponent={sessionsState.loading ? null : (
+                    <Text style={styles.sessionRailEmpty}>
+                        {sessionsState.error || 'No other sessions yet.'}
+                    </Text>
+                )}
+            />
+        </ContextPane>
+    );
+
+    const inspectorPane = (
+        <ContextPane style={styles.chatInspector}>
+            <Text style={styles.sectionTitle}>SESSION CONTEXT</Text>
+            <View style={styles.chatInspectorGrid}>
+                <InspectorMeta label="Mode" value={mode.toUpperCase()} />
+                <InspectorMeta label="Provider" value={activeProviderId || 'default'} />
+                <InspectorMeta label="Model" value={activeModelId || 'default'} />
+                <InspectorMeta label="Web" value={webMode.toUpperCase()} />
+                <InspectorMeta label="Memory" value={memoryMode.toUpperCase()} />
+                <InspectorMeta label="Thinking" value={thinkingLevel.toUpperCase()} />
+            </View>
+            {activeTools.length > 0 ? (
+                <View style={styles.chatInspectorBlock}>
+                    <Text style={styles.chatInspectorTitle}>Active tools</Text>
+                    {activeTools.map((tool) => (
+                        <View key={tool.toolRunId} style={styles.inspectorToolRow}>
+                            <Ionicons
+                                name={tool.status === 'executed' ? 'checkmark-circle' : 'sync'}
+                                size={12}
+                                color={tool.status === 'executed' ? colors.success : colors.cyan}
+                            />
+                            <Text style={styles.inspectorToolName}>{tool.toolName}</Text>
+                        </View>
+                    ))}
+                </View>
+            ) : null}
+            {(isBusy || runtime.queuedMessages.length > 0) ? (
+                <View style={styles.queueStatusCard}>
+                    <View style={styles.queueStatusHeader}>
+                        <View style={styles.queueStatusCopy}>
+                            <Text style={styles.queueStatusTitle}>
+                                {isBusy ? 'Assistant busy' : 'Queued messages ready'}
+                            </Text>
+                            <Text style={styles.queueStatusText}>
+                                {isBusy
+                                    ? 'Queue adds to the end, Steer Next moves to the front.'
+                                    : 'Queued messages will send in order.'}
+                            </Text>
+                        </View>
+                        {runtime.queuedMessages.length > 0 ? (
+                            <View style={styles.queueCountBadge}>
+                                <Text style={styles.queueCountText}>{runtime.queuedMessages.length}</Text>
+                            </View>
+                        ) : null}
+                    </View>
+                    {runtime.queuedMessages.slice(0, 3).map((message) => (
+                        <View key={message.id} style={styles.queueItemRow}>
+                            <View style={styles.queueItemCopy}>
+                                <Text style={styles.queueItemText} numberOfLines={1}>
+                                    {summarizeQueuedMessage(message)}
+                                </Text>
+                                {message.priority ? (
+                                    <Text style={styles.queueItemTag}>STEER NEXT</Text>
+                                ) : null}
+                            </View>
+                        </View>
+                    ))}
+                </View>
+            ) : null}
+            {shouldShowSpecialistPanel ? (
+                <SpecialistPanel
+                    suggestions={specialistSuggestionMap}
+                    candidates={visibleSpecialistCandidates}
+                    candidateById={specialistCandidateById}
+                    activeActionId={specialistActionTargetId}
+                    onCreateDraft={handleCreateSpecialistDraft}
+                    onPatchCandidate={handlePatchSpecialistCandidate}
+                />
+            ) : null}
+        </ContextPane>
+    );
 
     return (
         <View style={styles.safe}>
@@ -958,11 +1095,16 @@ export default function ChatThreadScreen() {
             ) : null}
 
             {/* Thread */}
-            <KeyboardAvoidingView
-                style={styles.flex}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={0}
-            >
+            <AdaptiveContainer style={styles.workspaceContainer} padded={!layout.dualPane}>
+                <MasterDetailShell
+                    style={styles.flex}
+                    master={sessionRail}
+                    detail={(
+                        <KeyboardAvoidingView
+                            style={layout.dualPane ? styles.threadWorkspace : styles.flex}
+                            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                            keyboardVerticalOffset={0}
+                        >
                 <FlashList
                     ref={flatListRef}
                     data={turns}
@@ -1050,7 +1192,7 @@ export default function ChatThreadScreen() {
                     </ScrollView>
                 ) : null}
 
-                {shouldShowSpecialistPanel ? (
+                {showInlineSpecialistPanel ? (
                     <SpecialistPanel
                         suggestions={specialistSuggestionMap}
                         candidates={visibleSpecialistCandidates}
@@ -1063,7 +1205,7 @@ export default function ChatThreadScreen() {
 
                 {/* Composer */}
                 <View style={[styles.composerContainer, { paddingBottom: composerBottomPad }]}>
-                    {(isBusy || runtime.queuedMessages.length > 0) ? (
+                    {showInlineQueueStatus ? (
                         <View style={styles.queueStatusCard}>
                             <View style={styles.queueStatusHeader}>
                                 <View style={styles.queueStatusCopy}>
@@ -1168,9 +1310,46 @@ export default function ChatThreadScreen() {
                         )}
                     </View>
                 </View>
-            </KeyboardAvoidingView>
+                        </KeyboardAvoidingView>
+                    )}
+                    inspector={layout.triplePane ? inspectorPane : undefined}
+                />
+            </AdaptiveContainer>
         </View>
     );
+}
+
+function InspectorMeta({ label, value }: { label: string; value: string }) {
+    return (
+        <View style={styles.inspectorMeta}>
+            <Text style={styles.inspectorMetaLabel}>{label}</Text>
+            <Text style={styles.inspectorMetaValue} numberOfLines={2}>
+                {value}
+            </Text>
+        </View>
+    );
+}
+
+function getRelativeTime(value: string) {
+    const timestamp = new Date(value).getTime();
+    if (!Number.isFinite(timestamp)) {
+        return 'just now';
+    }
+
+    const deltaMs = Date.now() - timestamp;
+    const deltaMinutes = Math.max(1, Math.round(deltaMs / 60000));
+
+    if (deltaMinutes < 60) {
+        return `${deltaMinutes}m ago`;
+    }
+
+    const deltaHours = Math.round(deltaMinutes / 60);
+    if (deltaHours < 24) {
+        return `${deltaHours}h ago`;
+    }
+
+    const deltaDays = Math.round(deltaHours / 24);
+    return `${deltaDays}d ago`;
 }
 
 function SpecialistPanel({
@@ -2241,6 +2420,125 @@ const styles = StyleSheet.create({
         borderColor: colors.borderCyan,
     },
     activeToolText: { ...typography.caption, color: colors.textMuted, fontFamily: 'monospace', fontSize: 10 },
+    workspaceContainer: {
+        flex: 1,
+        paddingBottom: 0,
+    },
+    threadWorkspace: {
+        flex: 1,
+        minWidth: 0,
+        overflow: 'hidden',
+        backgroundColor: colors.bgCore,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+    },
+    sessionRailPane: {
+        flex: 1,
+        gap: spacing.md,
+        padding: spacing.lg,
+    },
+    sessionRailTitle: {
+        ...typography.eyebrow,
+        color: colors.textPrimary,
+    },
+    sessionRailList: {
+        gap: spacing.xs,
+    },
+    sessionRailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.sm,
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    sessionRailRowSelected: {
+        backgroundColor: colors.cyanMuted,
+        borderColor: colors.borderCyan,
+    },
+    sessionRailRowPressed: {
+        opacity: 0.84,
+    },
+    sessionRailIcon: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.bgInset,
+    },
+    sessionRailCopy: {
+        flex: 1,
+        minWidth: 0,
+        gap: 2,
+    },
+    sessionRailLabel: {
+        ...typography.bodySm,
+        color: colors.textPrimary,
+        fontWeight: '600',
+    },
+    sessionRailMeta: {
+        ...typography.caption,
+        color: colors.textDim,
+    },
+    sessionRailEmpty: {
+        ...typography.bodySm,
+        color: colors.textDim,
+        paddingTop: spacing.lg,
+    },
+    sectionTitle: {
+        ...typography.eyebrow,
+        color: colors.textPrimary,
+    },
+    chatInspector: {
+        gap: spacing.lg,
+    },
+    chatInspectorGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing.sm,
+    },
+    inspectorMeta: {
+        minWidth: 120,
+        flexGrow: 1,
+        backgroundColor: colors.bgInset,
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.sm,
+        gap: 2,
+    },
+    inspectorMetaLabel: {
+        ...typography.caption,
+        color: colors.textDim,
+        textTransform: 'uppercase',
+    },
+    inspectorMetaValue: {
+        ...typography.bodySm,
+        color: colors.textPrimary,
+        fontWeight: '600',
+    },
+    chatInspectorBlock: {
+        gap: spacing.sm,
+    },
+    chatInspectorTitle: {
+        ...typography.eyebrow,
+        color: colors.textPrimary,
+    },
+    inspectorToolRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    inspectorToolName: {
+        ...typography.bodySm,
+        color: colors.textSecondary,
+        flex: 1,
+    },
 
     // Composer
     composerContainer: {

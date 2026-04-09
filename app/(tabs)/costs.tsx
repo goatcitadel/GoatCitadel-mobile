@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import {
     GCHeader, GCCard, GCStatCard, GCButton, GCStatusChip, FadeIn, AnimatedCounter,
 } from '../../src/components/ui';
+import { AdaptiveContainer, SectionGrid } from '../../src/components/layout';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
@@ -108,23 +109,19 @@ export default function CostScreen() {
                     />
                 }
             >
+                <AdaptiveContainer>
                 {/* KPI Cards */}
                 <FadeIn delay={100}>
-                    <View style={s.kpiRow}>
+                    <SectionGrid style={s.kpiGrid} minItemWidthPhone={140} minItemWidthTablet={220}>
                         <GCStatCard label="Total Spend" value={`$${totalCost.toFixed(4)}`} note="All time" tone="default" />
                         <GCStatCard label="Today" value={`$${dailyCost.toFixed(4)}`} note="Daily spend" tone="default" />
-                    </View>
-                </FadeIn>
-
-                <FadeIn delay={200}>
-                    <View style={s.kpiRow}>
                         <GCStatCard label="Total Tokens" value={totalTokens.toLocaleString()} note="Input + output" tone="default" />
                         <GCStatCard label="Sessions" value={allSessions.length.toString()} note="All sessions" tone="default" />
-                    </View>
+                    </SectionGrid>
                 </FadeIn>
 
                 {/* Budget Status */}
-                <FadeIn delay={300}>
+                <FadeIn delay={200}>
                     <GCCard style={s.section}>
                         <View style={s.budgetHeader}>
                             <Text style={s.sectionTitle}>BUDGET STATUS</Text>
@@ -154,18 +151,18 @@ export default function CostScreen() {
                 </FadeIn>
 
                 {/* Cost by Scope */}
-                <FadeIn delay={400}>
+                <FadeIn delay={300}>
                     <GCCard style={s.section}>
                         <Text style={s.sectionTitle}>COST BY SCOPE</Text>
-                        <View style={s.scopeRow}>
+                        <SectionGrid style={s.scopeGrid} minItemWidthPhone={120} minItemWidthTablet={220}>
                             <CostRingCard label="Mission" value={missionCost} total={totalCost} color={colors.cyan} />
                             <CostRingCard label="External" value={externalCost} total={totalCost} color={colors.ember} />
-                        </View>
+                        </SectionGrid>
                     </GCCard>
                 </FadeIn>
 
                 {/* Top Sessions by Cost */}
-                <FadeIn delay={500}>
+                <FadeIn delay={400}>
                     <GCCard style={s.section}>
                         <Text style={s.sectionTitle}>TOP SESSIONS BY COST</Text>
                         <Text style={s.sectionSubtitle}>Highest spend sessions</Text>
@@ -186,10 +183,10 @@ export default function CostScreen() {
                 </FadeIn>
 
                 {/* Cost Efficiency */}
-                <FadeIn delay={600}>
+                <FadeIn delay={500}>
                     <GCCard style={s.section}>
                         <Text style={s.sectionTitle}>EFFICIENCY METRICS</Text>
-                        <View style={s.effRow}>
+                        <SectionGrid style={s.effGrid} minItemWidthPhone={120} minItemWidthTablet={200}>
                             <View style={s.effItem}>
                                 <Text style={s.effValue}>
                                     ${allSessions.length > 0 ? (totalCost / allSessions.length).toFixed(4) : '0.00'}
@@ -208,11 +205,12 @@ export default function CostScreen() {
                                 </Text>
                                 <Text style={s.effLabel}>Avg tokens/session</Text>
                             </View>
-                        </View>
+                        </SectionGrid>
                     </GCCard>
                 </FadeIn>
 
                 <View style={{ height: 32 }} />
+                </AdaptiveContainer>
             </ScrollView>
         </View>
     );
@@ -221,11 +219,8 @@ export default function CostScreen() {
 const s = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
     content: { paddingBottom: 32 },
-    kpiRow: {
-        flexDirection: 'row', gap: spacing.md,
-        paddingHorizontal: spacing.xl, marginBottom: spacing.md,
-    },
-    section: { marginHorizontal: spacing.xl, marginBottom: spacing.lg },
+    kpiGrid: { marginBottom: spacing.md },
+    section: { marginBottom: spacing.lg },
     sectionTitle: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.xs },
     sectionSubtitle: { ...typography.caption, color: colors.textDim, marginBottom: spacing.md },
     emptyText: { ...typography.bodySm, color: colors.textDim, fontStyle: 'italic' },
@@ -247,8 +242,8 @@ const s = StyleSheet.create({
     budgetLabelText: { ...typography.caption, color: colors.textDim, fontSize: 9 },
 
     // Scope rings
-    scopeRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: spacing.md },
-    ringCard: { alignItems: 'center', gap: spacing.xs },
+    scopeGrid: { marginTop: spacing.md },
+    ringCard: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.sm },
     ringCircle: {
         width: 64, height: 64, borderRadius: 32,
         borderWidth: 3, alignItems: 'center', justifyContent: 'center',
@@ -273,8 +268,8 @@ const s = StyleSheet.create({
     barValue: { ...typography.caption, color: colors.textDim, fontFamily: 'monospace', width: 60, textAlign: 'right' },
 
     // Efficiency
-    effRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.md },
-    effItem: { alignItems: 'center', flex: 1 },
+    effGrid: { marginTop: spacing.md },
+    effItem: { alignItems: 'center', flex: 1, paddingVertical: spacing.sm },
     effValue: { ...typography.displaySm, color: colors.textPrimary, fontSize: 14 },
     effLabel: { ...typography.caption, color: colors.textDim, textAlign: 'center', marginTop: 2 },
 });

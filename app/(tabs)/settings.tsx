@@ -9,9 +9,11 @@ import { View, Text, ScrollView, TextInput, StyleSheet, Alert, Pressable } from 
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../src/components/ui';
+import { AdaptiveContainer, ContextPane, MasterDetailShell } from '../../src/components/layout';
 import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
+import { useLayout } from '../../src/hooks/useLayout';
 import { fetchRuntimeSettings, patchSettings } from '../../src/api/client';
 import { setGatewayUrl, getGatewayUrl, setAuthToken, getAuthToken } from '../../src/api/client';
 import { deleteSecureItem, setSecureItem } from '../../src/utils/storage';
@@ -29,6 +31,7 @@ const BUDGET_MODES = ['saver', 'balanced', 'power'] as const;
 
 export default function SettingsScreen() {
     const router = useRouter();
+    const layout = useLayout();
     const bottomPad = useBottomInsetPadding(32);
     const { showToast } = useToast();
     const { shellState, refreshAccess } = useGatewayAccess();
@@ -131,178 +134,219 @@ export default function SettingsScreen() {
         }
     };
 
+    const settingsContent = (
+        <View style={s.formColumn}>
+            {/* Gateway Connection */}
+            <GCCard style={s.section}>
+                <Text style={s.sectionTitle}>GATEWAY URL</Text>
+                <View style={s.inputRow}>
+                    <TextInput style={s.input} value={gwUrl} onChangeText={handleGatewayUrlChange}
+                        placeholder="http://192.168.0.10:8787" placeholderTextColor={colors.textDim}
+                        autoCapitalize="none" autoCorrect={false} keyboardType="url" />
+                    <GCStatusChip tone={gatewayShellAccessToneToChipTone(shellState.tone)}>
+                        {shellState.status === 'degraded-live-updates' ? 'LIVE DEGRADED' : shellState.label.toUpperCase()}
+                    </GCStatusChip>
+                </View>
+
+                <Text style={[s.sectionTitle, { marginTop: spacing.sm }]}>AUTH TOKEN</Text>
+                <View style={s.inputRow}>
+                    <TextInput style={s.input} value={token} onChangeText={setToken}
+                        placeholder="Bearer token (optional)" placeholderTextColor={colors.textDim}
+                        secureTextEntry autoCapitalize="none" autoCorrect={false} />
+                </View>
+
+                <GCButton title="Save & Test Connection" onPress={testConnection} variant="primary" size="md" />
+            </GCCard>
+
+            {settings.data ? (
+                <GCCard style={s.section}>
+                    <Text style={s.sectionTitle}>TOOL PROFILE</Text>
+                    <Text style={s.sectionDesc}>
+                        Controls which tool categories GoatCitadel can use. Higher profiles increase capability
+                        but also risk.
+                    </Text>
+                    <View style={s.chipRow}>
+                        {TOOL_PROFILES.map(profile => (
+                            <Pressable
+                                key={profile}
+                                style={[
+                                    s.chip,
+                                    settings.data?.defaultToolProfile === profile && s.chipActive,
+                                    profile === 'danger' && s.chipDanger,
+                                ]}
+                                onPress={() => changeToolProfile(profile)}
+                                disabled={saving}
+                            >
+                                <Text style={[
+                                    s.chipText,
+                                    settings.data?.defaultToolProfile === profile && s.chipTextActive,
+                                ]}>
+                                    {profile}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </GCCard>
+            ) : null}
+
+            {settings.data ? (
+                <GCCard style={s.section}>
+                    <Text style={s.sectionTitle}>BUDGET MODE</Text>
+                    <View style={s.chipRow}>
+                        {BUDGET_MODES.map(mode => (
+                            <Pressable
+                                key={mode}
+                                style={[
+                                    s.chip,
+                                    settings.data?.budgetMode === mode && s.chipActive,
+                                ]}
+                                onPress={() => changeBudgetMode(mode)}
+                                disabled={saving}
+                            >
+                                <Text style={[
+                                    s.chipText,
+                                    settings.data?.budgetMode === mode && s.chipTextActive,
+                                ]}>
+                                    {mode}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </GCCard>
+            ) : null}
+
+            <GCCard style={s.section}>
+                <Text style={s.sectionTitle}>ACTIVE PROVIDER</Text>
+                {settings.data ? (
+                    <>
+                        <View style={s.providerInfo}>
+                            <View style={s.providerDot} />
+                            <View>
+                                <Text style={s.providerLabel}>{settings.data.llm.activeProviderId}</Text>
+                                <Text style={s.providerModel}>{settings.data.llm.activeModel}</Text>
+                            </View>
+                        </View>
+                    </>
+                ) : (
+                    <Text style={s.dimText}>{settings.error || 'Loading…'}</Text>
+                )}
+            </GCCard>
+
+            {settings.data && settings.data.llm.providers.length > 0 ? (
+                <GCCard style={s.section}>
+                    <Text style={s.sectionTitle}>ALL PROVIDERS</Text>
+                    <Text style={s.sectionDesc}>
+                        Tap a provider to make it active. API keys and advanced provider
+                        config require Mission Control on desktop.
+                    </Text>
+                    {settings.data.llm.providers.map((p) => (
+                        <Pressable
+                            key={p.providerId}
+                            style={s.providerRow}
+                            onPress={() => switchProvider(p.providerId)}
+                            disabled={saving || p.providerId === settings.data!.llm.activeProviderId}
+                        >
+                            <View style={[s.providerDot,
+                                p.providerId === settings.data!.llm.activeProviderId && { backgroundColor: colors.cyan }]} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={s.providerRowLabel}>{p.label}</Text>
+                                <Text style={s.providerRowModel}>{p.defaultModel}</Text>
+                            </View>
+                            <GCStatusChip tone={p.hasApiKey ? 'success' : 'warning'}>
+                                {p.providerId === settings.data!.llm.activeProviderId ? 'ACTIVE' : p.hasApiKey ? 'KEY SET' : 'NO KEY'}
+                            </GCStatusChip>
+                        </Pressable>
+                    ))}
+                </GCCard>
+            ) : null}
+
+            {settings.data ? (
+                <GCCard style={s.section}>
+                    <Text style={s.sectionTitle}>SECURITY</Text>
+                    <View style={s.infoRow}>
+                        <Text style={s.infoLabel}>Auth mode</Text>
+                        <GCStatusChip tone={settings.data.auth.mode === 'none' ? 'warning' : 'success'}>
+                            {settings.data.auth.mode.toUpperCase()}
+                        </GCStatusChip>
+                    </View>
+                    <View style={s.infoRow}>
+                        <Text style={s.infoLabel}>Loopback bypass</Text>
+                        <Text style={s.infoValue}>{settings.data.auth.allowLoopbackBypass ? 'allowed' : 'blocked'}</Text>
+                    </View>
+                    <Text style={s.sectionDesc}>
+                        Auth mode and network allowlist are configured from Mission Control. If this device loses access,
+                        reopen the login gate and request approval from another trusted session.
+                    </Text>
+                </GCCard>
+            ) : null}
+
+            <GCCard style={s.section}>
+                <Text style={s.sectionTitle}>ABOUT</Text>
+                <Text style={s.aboutText}>GoatCitadel Mobile v{appVersion}</Text>
+                <Text style={s.aboutText}>Android-first · Expo + React Native</Text>
+                <Text style={s.dimText}>Operator-first AI command & control</Text>
+            </GCCard>
+        </View>
+    );
+
+    const summaryPane = (
+        <ContextPane style={s.summaryPane}>
+            <Text style={s.summaryTitle}>SYSTEM STATUS</Text>
+            <View style={s.summaryCard}>
+                <Text style={s.summaryLabel}>Gateway</Text>
+                <Text style={s.summaryValue}>{shellState.label}</Text>
+                <Text style={s.summaryHint}>{shellState.message}</Text>
+            </View>
+            <View style={s.summaryCard}>
+                <Text style={s.summaryLabel}>Gateway URL</Text>
+                <Text style={s.summaryMono}>{gwUrl || 'Not set'}</Text>
+            </View>
+            <View style={s.summaryCard}>
+                <Text style={s.summaryLabel}>Provider</Text>
+                <Text style={s.summaryValue}>{settings.data?.llm.activeProviderId || 'Loading…'}</Text>
+                <Text style={s.summaryMono}>{settings.data?.llm.activeModel || '—'}</Text>
+            </View>
+            <View style={s.summaryCard}>
+                <Text style={s.summaryLabel}>Security</Text>
+                <Text style={s.summaryValue}>{settings.data?.auth.mode.toUpperCase() || 'UNKNOWN'}</Text>
+                <Text style={s.summaryHint}>App v{appVersion}</Text>
+            </View>
+        </ContextPane>
+    );
+
     return (
         <View style={s.safe} >
             <GCHeader eyebrow="Configuration" title="Settings"
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />} />
-            <ScrollView contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}>
-
-                {/* Gateway Connection */}
-                <GCCard style={s.section}>
-                    <Text style={s.sectionTitle}>GATEWAY URL</Text>
-                    <View style={s.inputRow}>
-                        <TextInput style={s.input} value={gwUrl} onChangeText={handleGatewayUrlChange}
-                            placeholder="http://192.168.0.10:8787" placeholderTextColor={colors.textDim}
-                            autoCapitalize="none" autoCorrect={false} keyboardType="url" />
-                        <GCStatusChip tone={gatewayShellAccessToneToChipTone(shellState.tone)}>
-                            {shellState.status === 'degraded-live-updates' ? 'LIVE DEGRADED' : shellState.label.toUpperCase()}
-                        </GCStatusChip>
-                    </View>
-                    
-                    <Text style={[s.sectionTitle, { marginTop: spacing.sm }]}>AUTH TOKEN</Text>
-                    <View style={s.inputRow}>
-                        <TextInput style={s.input} value={token} onChangeText={setToken}
-                            placeholder="Bearer token (optional)" placeholderTextColor={colors.textDim}
-                            secureTextEntry autoCapitalize="none" autoCorrect={false} />
-                    </View>
-                    
-                    <GCButton title="Save & Test Connection" onPress={testConnection} variant="primary" size="md" />
-                </GCCard>
-
-                {/* Tool Profile */}
-                {settings.data ? (
-                    <GCCard style={s.section}>
-                        <Text style={s.sectionTitle}>TOOL PROFILE</Text>
-                        <Text style={s.sectionDesc}>
-                            Controls which tool categories GoatCitadel can use. Higher profiles increase capability
-                            but also risk.
-                        </Text>
-                        <View style={s.chipRow}>
-                            {TOOL_PROFILES.map(profile => (
-                                <Pressable
-                                    key={profile}
-                                    style={[
-                                        s.chip,
-                                        settings.data?.defaultToolProfile === profile && s.chipActive,
-                                        profile === 'danger' && s.chipDanger,
-                                    ]}
-                                    onPress={() => changeToolProfile(profile)}
-                                    disabled={saving}
-                                >
-                                    <Text style={[
-                                        s.chipText,
-                                        settings.data?.defaultToolProfile === profile && s.chipTextActive,
-                                    ]}>
-                                        {profile}
-                                    </Text>
-                                </Pressable>
-                            ))}
-                        </View>
-                    </GCCard>
-                ) : null}
-
-                {/* Budget Mode */}
-                {settings.data ? (
-                    <GCCard style={s.section}>
-                        <Text style={s.sectionTitle}>BUDGET MODE</Text>
-                        <View style={s.chipRow}>
-                            {BUDGET_MODES.map(mode => (
-                                <Pressable
-                                    key={mode}
-                                    style={[
-                                        s.chip,
-                                        settings.data?.budgetMode === mode && s.chipActive,
-                                    ]}
-                                    onPress={() => changeBudgetMode(mode)}
-                                    disabled={saving}
-                                >
-                                    <Text style={[
-                                        s.chipText,
-                                        settings.data?.budgetMode === mode && s.chipTextActive,
-                                    ]}>
-                                        {mode}
-                                    </Text>
-                                </Pressable>
-                            ))}
-                        </View>
-                    </GCCard>
-                ) : null}
-
-                {/* Active Provider */}
-                <GCCard style={s.section}>
-                    <Text style={s.sectionTitle}>ACTIVE PROVIDER</Text>
-                    {settings.data ? (
-                        <>
-                            <View style={s.providerInfo}>
-                                <View style={s.providerDot} />
-                                <View>
-                                    <Text style={s.providerLabel}>{settings.data.llm.activeProviderId}</Text>
-                                    <Text style={s.providerModel}>{settings.data.llm.activeModel}</Text>
-                                </View>
-                            </View>
-                        </>
-                    ) : (
-                        <Text style={s.dimText}>{settings.error || 'Loading…'}</Text>
-                    )}
-                </GCCard>
-
-                {/* Provider List — tappable to switch */}
-                {settings.data && settings.data.llm.providers.length > 0 ? (
-                    <GCCard style={s.section}>
-                        <Text style={s.sectionTitle}>ALL PROVIDERS</Text>
-                        <Text style={s.sectionDesc}>
-                            Tap a provider to make it active. API keys and advanced provider
-                            config require Mission Control on desktop.
-                        </Text>
-                        {settings.data.llm.providers.map((p) => (
-                            <Pressable
-                                key={p.providerId}
-                                style={s.providerRow}
-                                onPress={() => switchProvider(p.providerId)}
-                                disabled={saving || p.providerId === settings.data!.llm.activeProviderId}
-                            >
-                                <View style={[s.providerDot,
-                                    p.providerId === settings.data!.llm.activeProviderId && { backgroundColor: colors.cyan }]} />
-                                <View style={{ flex: 1 }}>
-                                    <Text style={s.providerRowLabel}>{p.label}</Text>
-                                    <Text style={s.providerRowModel}>{p.defaultModel}</Text>
-                                </View>
-                                <GCStatusChip tone={p.hasApiKey ? 'success' : 'warning'}>
-                                    {p.providerId === settings.data!.llm.activeProviderId ? 'ACTIVE' : p.hasApiKey ? 'KEY SET' : 'NO KEY'}
-                                </GCStatusChip>
-                            </Pressable>
-                        ))}
-                    </GCCard>
-                ) : null}
-
-                {/* Auth Info (read-only) */}
-                {settings.data ? (
-                    <GCCard style={s.section}>
-                        <Text style={s.sectionTitle}>SECURITY</Text>
-                        <View style={s.infoRow}>
-                            <Text style={s.infoLabel}>Auth mode</Text>
-                            <GCStatusChip tone={settings.data.auth.mode === 'none' ? 'warning' : 'success'}>
-                                {settings.data.auth.mode.toUpperCase()}
-                            </GCStatusChip>
-                        </View>
-                        <View style={s.infoRow}>
-                            <Text style={s.infoLabel}>Loopback bypass</Text>
-                            <Text style={s.infoValue}>{settings.data.auth.allowLoopbackBypass ? 'allowed' : 'blocked'}</Text>
-                        </View>
-                    <Text style={s.sectionDesc}>
-                            Auth mode and network allowlist are configured from Mission Control. If this device loses access,
-                            reopen the login gate and request approval from another trusted session.
-                        </Text>
-                    </GCCard>
-                ) : null}
-
-                {/* About */}
-                <GCCard style={s.section}>
-                    <Text style={s.sectionTitle}>ABOUT</Text>
-                    <Text style={s.aboutText}>GoatCitadel Mobile v{appVersion}</Text>
-                    <Text style={s.aboutText}>Android-first · Expo + React Native</Text>
-                    <Text style={s.dimText}>Operator-first AI command & control</Text>
-                </GCCard>
-
-                <View style={{ height: 32 }} />
-            </ScrollView>
+            <AdaptiveContainer style={s.adaptiveRoot}>
+                {layout.dualPane ? (
+                    <MasterDetailShell
+                        style={s.shell}
+                        master={(
+                            <ScrollView contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}>
+                                {settingsContent}
+                                <View style={{ height: 32 }} />
+                            </ScrollView>
+                        )}
+                        detail={summaryPane}
+                    />
+                ) : (
+                    <ScrollView contentContainerStyle={[s.content, { paddingBottom: bottomPad }]}>
+                        {settingsContent}
+                        <View style={{ height: 32 }} />
+                    </ScrollView>
+                )}
+            </AdaptiveContainer>
         </View>
     );
 }
 
 const s = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
-    content: { paddingHorizontal: spacing.xl, paddingBottom: 32 },
+    adaptiveRoot: { flex: 1 },
+    shell: { flex: 1 },
+    content: { paddingBottom: 32 },
+    formColumn: { gap: spacing.lg },
     section: { marginBottom: spacing.lg },
     sectionTitle: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.md },
     sectionDesc: { ...typography.caption, color: colors.textDim, marginBottom: spacing.md },
@@ -341,4 +385,18 @@ const s = StyleSheet.create({
     infoValue: { ...typography.bodySm, color: colors.textSecondary },
     dimText: { ...typography.bodySm, color: colors.textDim },
     aboutText: { ...typography.bodyMd, color: colors.textSecondary },
+    summaryPane: { gap: spacing.md },
+    summaryTitle: { ...typography.eyebrow, color: colors.textPrimary },
+    summaryCard: {
+        backgroundColor: colors.bgInset,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+        padding: spacing.md,
+        gap: spacing.xs,
+    },
+    summaryLabel: { ...typography.caption, color: colors.textDim },
+    summaryValue: { ...typography.bodyMd, color: colors.textPrimary, fontWeight: '600' },
+    summaryMono: { ...typography.caption, color: colors.textSecondary, fontFamily: 'monospace' },
+    summaryHint: { ...typography.bodySm, color: colors.textDim },
 });

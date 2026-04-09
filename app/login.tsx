@@ -13,7 +13,9 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing, typography, radii } from '../src/theme/tokens';
+import { TABLET_BREAKPOINT, colors, spacing, typography, radii } from '../src/theme/tokens';
+import { useBottomInsetPadding } from '../src/hooks/useBottomInsetPadding';
+import { useLayout } from '../src/hooks/useLayout';
 import {
     clearGatewayAccessState,
     createDeviceAccessRequest,
@@ -52,6 +54,7 @@ type PendingDeviceApprovalRequest = DeviceAccessRequestCreateResponse & {
 
 export default function LoginScreen() {
     const router = useRouter();
+    const layout = useLayout();
     const searchParams = useLocalSearchParams<{
         url?: string | string[];
         token?: string | string[];
@@ -59,6 +62,7 @@ export default function LoginScreen() {
         autoverify?: string | string[];
     }>();
     const insets = useSafeAreaInsets();
+    const scrollBottomPad = useBottomInsetPadding(spacing.xl);
     const { setAccessResult, reportAuthExpired } = useGatewayAccess();
     const [url, setUrl] = useState(getGatewayUrl());
     const [token, setToken] = useState('');
@@ -380,64 +384,80 @@ export default function LoginScreen() {
                             s.scroll,
                             {
                                 paddingTop: insets.top + spacing.xl,
-                                paddingBottom: insets.bottom + spacing.xl,
+                                paddingBottom: scrollBottomPad,
                             },
                         ]}
                         keyboardShouldPersistTaps="handled"
                     >
-                        <Animated.View style={[s.brandSection, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
-                            <View style={s.logoContainer}>
-                                <View style={s.logoRing}>
-                                    <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFillObject} />
-                                    <Ionicons name="shield-checkmark" size={48} color={colors.cyan} style={{ zIndex: 1 }} />
-                                </View>
-                                <View style={s.logoGlow} />
-                            </View>
-                            <Text style={s.brandName}>GOATCITADEL</Text>
-                            <Text style={s.brandTagline}>Operator-first AI command & control</Text>
-                        </Animated.View>
-
-                        <Animated.View style={[s.formSection, { opacity: formOpacity, transform: [{ translateY: formY }] }]}>
-                            <BlurView intensity={30} tint="dark" style={s.glassCard}>
-                                <Text style={s.formTitle}>CONNECT TO GATEWAY</Text>
-
-                                <View style={s.statusCard}>
-                                    <View style={s.statusHeader}>
-                                        <Text style={s.statusLabel}>{shellAccess.label}</Text>
-                                        <Ionicons
-                                            name={resolveStatusIcon(shellAccess.status)}
-                                            size={16}
-                                            color={resolveStatusColor(shellAccess.status)}
-                                        />
+                        <View style={[s.authShell, layout.isTablet && s.authShellTablet]}>
+                            <Animated.View style={[
+                                s.brandSection,
+                                layout.isTablet && s.brandSectionTablet,
+                                { opacity: logoOpacity, transform: [{ scale: logoScale }] },
+                            ]}>
+                                <View style={s.logoContainer}>
+                                    <View style={s.logoRing}>
+                                        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFillObject} />
+                                        <Ionicons name="shield-checkmark" size={48} color={colors.cyan} style={{ zIndex: 1 }} />
                                     </View>
-                                    <Text style={s.statusMessage}>{shellAccess.message}</Text>
-                                    <Text style={s.statusDetail}>Next: {shellAccess.nextStep}</Text>
-                                    {access.checks?.length ? (
-                                        <View style={s.checkList}>
-                                            {access.checks.map((check) => (
-                                                <View key={check.id} style={s.checkCard}>
-                                                    <View style={s.checkHeader}>
-                                                        <View style={s.checkHeaderLeft}>
-                                                            <Ionicons
-                                                                name={resolveCheckIcon(check.status)}
-                                                                size={14}
-                                                                color={resolveCheckColor(check.status)}
-                                                            />
-                                                            <Text style={s.checkLabel}>{check.label}</Text>
-                                                        </View>
-                                                        <Text style={[s.checkStatus, { color: resolveCheckColor(check.status) }]}>
-                                                            {check.status.toUpperCase()}
-                                                        </Text>
-                                                    </View>
-                                                    <Text style={s.checkPath}>{check.path}</Text>
-                                                    <Text style={s.checkDetail}>{check.detail}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    ) : access.healthDetail ? (
-                                        <Text style={s.statusDetail}>{access.healthDetail}</Text>
-                                    ) : null}
+                                    <View style={s.logoGlow} />
                                 </View>
+                                <Text style={s.brandName}>GOATCITADEL</Text>
+                                <Text style={s.brandTagline}>Operator-first AI command & control</Text>
+                                {layout.isTablet ? (
+                                    <View style={s.brandStatusCard}>
+                                        <Text style={s.brandStatusLabel}>{shellAccess.label}</Text>
+                                        <Text style={s.brandStatusText}>{shellAccess.message}</Text>
+                                        <Text style={s.brandStatusHint}>{authHint}</Text>
+                                    </View>
+                                ) : null}
+                            </Animated.View>
+
+                            <Animated.View style={[
+                                s.formSection,
+                                layout.isTablet && s.formSectionTablet,
+                                { opacity: formOpacity, transform: [{ translateY: formY }] },
+                            ]}>
+                                <BlurView intensity={30} tint="dark" style={s.glassCard}>
+                                    <Text style={s.formTitle}>CONNECT TO GATEWAY</Text>
+
+                                    <View style={s.statusCard}>
+                                        <View style={s.statusHeader}>
+                                            <Text style={s.statusLabel}>{shellAccess.label}</Text>
+                                            <Ionicons
+                                                name={resolveStatusIcon(shellAccess.status)}
+                                                size={16}
+                                                color={resolveStatusColor(shellAccess.status)}
+                                            />
+                                        </View>
+                                        <Text style={s.statusMessage}>{shellAccess.message}</Text>
+                                        <Text style={s.statusDetail}>Next: {shellAccess.nextStep}</Text>
+                                        {access.checks?.length ? (
+                                            <View style={s.checkList}>
+                                                {access.checks.map((check) => (
+                                                    <View key={check.id} style={s.checkCard}>
+                                                        <View style={s.checkHeader}>
+                                                            <View style={s.checkHeaderLeft}>
+                                                                <Ionicons
+                                                                    name={resolveCheckIcon(check.status)}
+                                                                    size={14}
+                                                                    color={resolveCheckColor(check.status)}
+                                                                />
+                                                                <Text style={s.checkLabel}>{check.label}</Text>
+                                                            </View>
+                                                            <Text style={[s.checkStatus, { color: resolveCheckColor(check.status) }]}>
+                                                                {check.status.toUpperCase()}
+                                                            </Text>
+                                                        </View>
+                                                        <Text style={s.checkPath}>{check.path}</Text>
+                                                        <Text style={s.checkDetail}>{check.detail}</Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        ) : access.healthDetail ? (
+                                            <Text style={s.statusDetail}>{access.healthDetail}</Text>
+                                        ) : null}
+                                    </View>
 
                                 <View style={s.fieldGroup}>
                                     <Text style={s.fieldLabel}>GATEWAY URL</Text>
@@ -495,86 +515,89 @@ export default function LoginScreen() {
                                     </View>
                                 </View>
 
-                                <Text style={s.hintText}>{authHint}</Text>
+                                    {!layout.isTablet ? (
+                                        <Text style={s.hintText}>{authHint}</Text>
+                                    ) : null}
 
-                                {formError ? (
-                                    <View style={s.errorRow}>
-                                        <Ionicons name="warning" size={14} color={colors.crimson} />
-                                        <Text style={s.errorText}>{formError}</Text>
-                                    </View>
-                                ) : null}
-
-                                {deviceApprovalError ? (
-                                    <View style={s.errorRow}>
-                                        <Ionicons name="warning" size={14} color={colors.crimson} />
-                                        <Text style={s.errorText}>{deviceApprovalError}</Text>
-                                    </View>
-                                ) : null}
-
-                                {pendingDeviceApproval ? (
-                                    <View style={s.requestCard}>
-                                        <View style={s.requestHeader}>
-                                            <Text style={s.requestTitle}>Device request {pendingDeviceApproval.status.toUpperCase()}</Text>
-                                            <Text style={s.requestCode}>#{pendingDeviceApproval.approvalId.slice(0, 8)}</Text>
+                                    {formError ? (
+                                        <View style={s.errorRow}>
+                                            <Ionicons name="warning" size={14} color={colors.crimson} />
+                                            <Text style={s.errorText}>{formError}</Text>
                                         </View>
-                                        <Text style={s.requestMessage}>{pendingDeviceApproval.message}</Text>
-                                        <Text style={s.requestMeta}>
-                                            Expires {new Date(pendingDeviceApproval.expiresAt).toLocaleTimeString()}.
-                                        </Text>
-                                    </View>
-                                ) : null}
+                                    ) : null}
 
-                                <Pressable
-                                    style={({ pressed }) => [
-                                        s.connectBtn,
-                                        access.status === 'checking' && s.connectBtnDisabled,
-                                        pressed && s.connectBtnPressed,
-                                    ]}
-                                    onPress={() => { void handleConnect(); }}
-                                    disabled={access.status === 'checking' || deviceApprovalBusy}
-                                >
-                                    <Ionicons
-                                        name={access.status === 'checking' ? 'sync' : 'flash'}
-                                        size={20}
-                                        color={colors.bgCore}
-                                    />
-                                    <Text style={s.connectBtnText}>
-                                        {access.status === 'checking' ? 'VERIFYING…' : 'VERIFY ACCESS'}
-                                    </Text>
-                                </Pressable>
+                                    {deviceApprovalError ? (
+                                        <View style={s.errorRow}>
+                                            <Ionicons name="warning" size={14} color={colors.crimson} />
+                                            <Text style={s.errorText}>{deviceApprovalError}</Text>
+                                        </View>
+                                    ) : null}
 
-                                <Pressable
-                                    style={({ pressed }) => [
-                                        s.secondaryBtn,
-                                        (deviceApprovalBusy || approvalPending) && s.secondaryBtnDisabled,
-                                        pressed && s.secondaryBtnPressed,
-                                    ]}
-                                    onPress={() => { void handleRequestApproval(); }}
-                                    disabled={deviceApprovalBusy || approvalPending}
-                                >
-                                    <Ionicons name="phone-portrait" size={18} color={colors.cyan} />
-                                    <Text style={s.secondaryBtnText}>
-                                        {deviceApprovalBusy
-                                            ? 'REQUESTING…'
-                                            : approvalPending
-                                                ? 'WAITING FOR APPROVAL…'
-                                                : 'REQUEST APPROVAL FROM ANOTHER DEVICE'}
-                                    </Text>
-                                </Pressable>
+                                    {pendingDeviceApproval ? (
+                                        <View style={s.requestCard}>
+                                            <View style={s.requestHeader}>
+                                                <Text style={s.requestTitle}>Device request {pendingDeviceApproval.status.toUpperCase()}</Text>
+                                                <Text style={s.requestCode}>#{pendingDeviceApproval.approvalId.slice(0, 8)}</Text>
+                                            </View>
+                                            <Text style={s.requestMessage}>{pendingDeviceApproval.message}</Text>
+                                            <Text style={s.requestMeta}>
+                                                Expires {new Date(pendingDeviceApproval.expiresAt).toLocaleTimeString()}.
+                                            </Text>
+                                        </View>
+                                    ) : null}
 
-                                {pendingDeviceApproval ? (
                                     <Pressable
-                                        style={s.resetBtn}
-                                        onPress={() => {
-                                            setPendingDeviceApproval(null);
-                                            setDeviceApprovalError(null);
-                                        }}
+                                        style={({ pressed }) => [
+                                            s.connectBtn,
+                                            access.status === 'checking' && s.connectBtnDisabled,
+                                            pressed && s.connectBtnPressed,
+                                        ]}
+                                        onPress={() => { void handleConnect(); }}
+                                        disabled={access.status === 'checking' || deviceApprovalBusy}
                                     >
-                                        <Text style={s.resetText}>RESET DEVICE REQUEST</Text>
+                                        <Ionicons
+                                            name={access.status === 'checking' ? 'sync' : 'flash'}
+                                            size={20}
+                                            color={colors.bgCore}
+                                        />
+                                        <Text style={s.connectBtnText}>
+                                            {access.status === 'checking' ? 'VERIFYING…' : 'VERIFY ACCESS'}
+                                        </Text>
                                     </Pressable>
-                                ) : null}
-                            </BlurView>
-                        </Animated.View>
+
+                                    <Pressable
+                                        style={({ pressed }) => [
+                                            s.secondaryBtn,
+                                            (deviceApprovalBusy || approvalPending) && s.secondaryBtnDisabled,
+                                            pressed && s.secondaryBtnPressed,
+                                        ]}
+                                        onPress={() => { void handleRequestApproval(); }}
+                                        disabled={deviceApprovalBusy || approvalPending}
+                                    >
+                                        <Ionicons name="phone-portrait" size={18} color={colors.cyan} />
+                                        <Text style={s.secondaryBtnText}>
+                                            {deviceApprovalBusy
+                                                ? 'REQUESTING…'
+                                                : approvalPending
+                                                    ? 'WAITING FOR APPROVAL…'
+                                                    : 'REQUEST APPROVAL FROM ANOTHER DEVICE'}
+                                        </Text>
+                                    </Pressable>
+
+                                    {pendingDeviceApproval ? (
+                                        <Pressable
+                                            style={s.resetBtn}
+                                            onPress={() => {
+                                                setPendingDeviceApproval(null);
+                                                setDeviceApprovalError(null);
+                                            }}
+                                        >
+                                            <Text style={s.resetText}>RESET DEVICE REQUEST</Text>
+                                        </Pressable>
+                                    ) : null}
+                                </BlurView>
+                            </Animated.View>
+                        </View>
 
                         <Text style={s.version}>GoatCitadel Mobile v0.2.1 · Device approval enabled</Text>
                     </ScrollView>
@@ -680,7 +703,7 @@ function inferPendingDeviceType(): DeviceAccessDeviceType {
     if (Platform.OS === 'android' || Platform.OS === 'ios') {
         const { width, height } = Dimensions.get('window');
         const shortestSide = Math.min(width, height);
-        return shortestSide >= 720 ? 'tablet' : 'mobile';
+        return shortestSide >= TABLET_BREAKPOINT ? 'tablet' : 'mobile';
     }
     if (Platform.OS === 'web') {
         return 'browser';
@@ -733,8 +756,18 @@ const s = StyleSheet.create({
     safe: { flex: 1 },
     flex: { flex: 1 },
     scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing.xl },
+    authShell: { width: '100%', gap: spacing.xxl },
+    authShellTablet: { flexDirection: 'row', alignItems: 'stretch' },
 
     brandSection: { alignItems: 'center', marginBottom: 40 },
+    brandSectionTablet: {
+        flex: 1,
+        minWidth: 0,
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        marginBottom: 0,
+        paddingVertical: spacing.xl,
+    },
     logoContainer: { position: 'relative', marginBottom: spacing.lg, alignItems: 'center', justifyContent: 'center' },
     logoRing: {
         width: 104,
@@ -762,8 +795,23 @@ const s = StyleSheet.create({
         color: colors.textPrimary,
     },
     brandTagline: { ...typography.bodySm, color: colors.textDim, marginTop: 4 },
+    brandStatusCard: {
+        width: '100%',
+        maxWidth: 420,
+        marginTop: spacing.xl,
+        borderRadius: radii.md,
+        borderWidth: 1,
+        borderColor: 'rgba(84, 221, 255, 0.18)',
+        backgroundColor: 'rgba(3, 8, 14, 0.48)',
+        padding: spacing.lg,
+        gap: spacing.sm,
+    },
+    brandStatusLabel: { ...typography.eyebrow, color: colors.cyan },
+    brandStatusText: { ...typography.bodyMd, color: colors.textPrimary, lineHeight: 22 },
+    brandStatusHint: { ...typography.bodySm, color: colors.textDim, lineHeight: 20 },
 
     formSection: { marginBottom: 32 },
+    formSectionTablet: { flex: 1, maxWidth: 520, width: '100%', marginBottom: 0, alignSelf: 'center' },
     glassCard: {
         padding: spacing.xl,
         borderRadius: radii.lg,

@@ -7,12 +7,14 @@ import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLayout } from '../../hooks/useLayout';
 import { colors, spacing, typography } from '../../theme/tokens';
 import { useGatewayAccess } from '../../context/GatewayAccessContext';
 
 export const ConnectionBar = memo(function ConnectionBar() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const layout = useLayout();
     const { shellState, busy, refreshAccess } = useGatewayAccess();
     const pulse = React.useRef(new Animated.Value(0.5)).current;
 
@@ -56,7 +58,10 @@ export const ConnectionBar = memo(function ConnectionBar() {
         <Pressable
             style={[
                 s.bar,
-                { paddingTop: insets.top + spacing.xs },
+                {
+                    paddingTop: insets.top + spacing.xs,
+                    paddingHorizontal: layout.gutter,
+                },
                 isWarning && s.barWarning,
                 isCritical && s.barCritical,
             ]}
@@ -96,7 +101,6 @@ const s = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: spacing.sm,
-        paddingHorizontal: spacing.xl,
         paddingBottom: spacing.sm,
         backgroundColor: 'rgba(255, 86, 120, 0.08)',
         borderBottomWidth: 1,

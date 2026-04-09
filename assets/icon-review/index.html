@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GoatCitadel Icon Review</title>
+    <style>
+      :root {
+        --bg: #061018;
+        --panel: rgba(10, 22, 30, 0.88);
+        --panel-border: rgba(108, 245, 255, 0.16);
+        --text: #ecfeff;
+        --muted: #9cc6cd;
+        --accent: #6cf5ff;
+        --shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(45, 174, 189, 0.15), transparent 28%),
+          radial-gradient(circle at top right, rgba(108, 245, 255, 0.08), transparent 24%),
+          linear-gradient(180deg, #081620 0%, var(--bg) 68%);
+        min-height: 100vh;
+      }
+
+      main {
+        width: min(1380px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 44px 0 64px;
+      }
+
+      h1, h2, h3, p { margin: 0; }
+
+      .hero {
+        display: grid;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+
+      .eyebrow {
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        font-size: 14px;
+      }
+
+      .hero h1 {
+        font-size: clamp(36px, 7vw, 64px);
+        line-height: 0.94;
+      }
+
+      .hero p {
+        max-width: 920px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.45;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+        margin-bottom: 30px;
+      }
+
+      .summary-card,
+      .icon-card {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+      }
+
+      .summary-card { padding: 20px; }
+
+      .summary-card strong {
+        display: block;
+        color: var(--accent);
+        font-size: 15px;
+        margin-bottom: 8px;
+      }
+
+      .summary-card span {
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+        gap: 18px;
+      }
+
+      .icon-card {
+        padding: 18px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .card-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .card-top h2 { font-size: 26px; }
+
+      .badge {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(108, 245, 255, 0.12);
+        color: var(--accent);
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .warn {
+        background: rgba(255, 201, 94, 0.12);
+        color: #ffd581;
+      }
+
+      .preview-wrap {
+        display: grid;
+        place-items: center;
+        min-height: 220px;
+        border-radius: 24px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)),
+          linear-gradient(135deg, #08131a, #0f2532);
+        border: 1px solid rgba(108, 245, 255, 0.12);
+      }
+
+      .preview-wrap img {
+        width: 180px;
+        height: 180px;
+        border-radius: 40px;
+        display: block;
+      }
+
+      .size-row {
+        display: flex;
+        gap: 16px;
+        align-items: end;
+        flex-wrap: wrap;
+      }
+
+      .size-chip {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .size-chip img {
+        display: block;
+        border-radius: 22%;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26);
+      }
+
+      .size-64 { width: 64px; height: 64px; }
+      .size-48 { width: 48px; height: 48px; }
+      .size-32 { width: 32px; height: 32px; }
+
+      .copy {
+        display: grid;
+        gap: 10px;
+      }
+
+      .copy p {
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .copy strong { color: var(--text); }
+
+      .recommendation {
+        margin-top: 28px;
+        padding: 22px;
+        border-radius: 28px;
+        background: linear-gradient(135deg, rgba(108, 245, 255, 0.1), rgba(20, 41, 51, 0.9));
+        border: 1px solid rgba(108, 245, 255, 0.18);
+      }
+
+      .recommendation h3 {
+        font-size: 24px;
+        margin-bottom: 10px;
+      }
+
+      .recommendation p {
+        color: var(--muted);
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+          <span class="eyebrow">GoatCitadel Mobile</span>
+          <h1>Icon Direction Review</h1>
+          <p>
+          The mobile repo is already wired to custom icon assets, but the current mark still feels busy and uneven at
+          launcher scale. These alternatives take your new brief literally: a castle or citadel structure with a clear
+          <strong>G</strong> integrated into the icon.
+          </p>
+      </section>
+
+      <section class="summary">
+        <article class="summary-card">
+          <strong>Current state</strong>
+          <span>The app is configured correctly in `app.json`; the remaining question is design quality, not missing wiring.</span>
+        </article>
+        <article class="summary-card">
+          <strong>Design problem</strong>
+          <span>The current icon mixes shield, glow, horn texture, and interior detail in a way that muddies the small-size read.</span>
+        </article>
+        <article class="summary-card">
+          <strong>Goal</strong>
+          <span>Pick a direction that feels literal, legible, and more app-icon-native before we replace the live PNG assets and rebuild the app.</span>
+        </article>
+      </section>
+
+      <section class="grid">
+        <article class="icon-card">
+          <div class="card-top">
+            <div><h2>Current</h2></div>
+            <span class="badge warn">Live Asset</span>
+          </div>
+          <div class="preview-wrap">
+            <img src="../icon.png" alt="Current live icon" />
+          </div>
+          <div class="size-row">
+            <div class="size-chip"><img class="size-64" src="../icon.png" alt="" /><span>64</span></div>
+            <div class="size-chip"><img class="size-48" src="../icon.png" alt="" /><span>48</span></div>
+            <div class="size-chip"><img class="size-32" src="../icon.png" alt="" /><span>32</span></div>
+          </div>
+          <div class="copy">
+            <p><strong>What works:</strong> the palette is on-brand and the goat/citadel idea is present.</p>
+            <p><strong>What hurts:</strong> the glow, horn texture, shield, and tower details all fight for priority.</p>
+          </div>
+        </article>
+
+        <article class="icon-card">
+          <div class="card-top">
+            <div><h2>A. Bastion G</h2></div>
+            <span class="badge">Recommended</span>
+          </div>
+          <div class="preview-wrap">
+            <img src="./concept-a-bastion-g.png" alt="Bastion G concept" />
+          </div>
+          <div class="size-row">
+            <div class="size-chip"><img class="size-64" src="./concept-a-bastion-g.png" alt="" /><span>64</span></div>
+            <div class="size-chip"><img class="size-48" src="./concept-a-bastion-g.png" alt="" /><span>48</span></div>
+            <div class="size-chip"><img class="size-32" src="./concept-a-bastion-g.png" alt="" /><span>32</span></div>
+          </div>
+          <div class="copy">
+            <p><strong>Why it works:</strong> strongest direct read of a citadel with a visible `G` that survives icon scale.</p>
+            <p><strong>Tradeoff:</strong> still has enough structure that the adaptive foreground cut needs to be handled carefully.</p>
+          </div>
+        </article>
+
+        <article class="icon-card">
+          <div class="card-top">
+            <div><h2>B. Keeper G</h2></div>
+            <span class="badge">Badge</span>
+          </div>
+          <div class="preview-wrap">
+            <img src="./concept-b-keeper-g.png" alt="Keeper G concept" />
+          </div>
+          <div class="size-row">
+            <div class="size-chip"><img class="size-64" src="./concept-b-keeper-g.png" alt="" /><span>64</span></div>
+            <div class="size-chip"><img class="size-48" src="./concept-b-keeper-g.png" alt="" /><span>48</span></div>
+            <div class="size-chip"><img class="size-32" src="./concept-b-keeper-g.png" alt="" /><span>32</span></div>
+          </div>
+          <div class="copy">
+            <p><strong>Why it works:</strong> the strongest “premium emblem” version of the citadel-plus-`G` idea.</p>
+            <p><strong>Tradeoff:</strong> a little more ceremonial and badge-like than a straight app mark.</p>
+          </div>
+        </article>
+
+        <article class="icon-card">
+          <div class="card-top">
+            <div><h2>C. Night Gate</h2></div>
+            <span class="badge">Cleanest</span>
+          </div>
+          <div class="preview-wrap">
+            <img src="./concept-c-night-gate.png" alt="Night Gate concept" />
+          </div>
+          <div class="size-row">
+            <div class="size-chip"><img class="size-64" src="./concept-c-night-gate.png" alt="" /><span>64</span></div>
+            <div class="size-chip"><img class="size-48" src="./concept-c-night-gate.png" alt="" /><span>48</span></div>
+            <div class="size-chip"><img class="size-32" src="./concept-c-night-gate.png" alt="" /><span>32</span></div>
+          </div>
+          <div class="copy">
+            <p><strong>Why it works:</strong> broad fortress silhouette and the cleanest small-size read of the set.</p>
+            <p><strong>Tradeoff:</strong> slightly less distinctive than A once viewed at full size.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="recommendation">
+        <h3>Suggested starting point</h3>
+        <p>
+          <strong>Concept A</strong> is the best first replacement candidate because it follows your brief most directly:
+          a citadel structure with a clear `G`, without the current icon’s visual clutter. <strong>Concept B</strong> is
+          stronger if you want a more badge-like identity. <strong>Concept C</strong> is strongest if you want the cleanest
+          launcher read on actual devices.
+        </p>
+      </section>
+    </main>
+  </body>
+  </html>

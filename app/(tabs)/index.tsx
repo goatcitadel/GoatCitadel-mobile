@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { AdaptiveContainer, ContextPane, MasterDetailShell, SectionGrid } from '../../src/components/layout';
 import {
     GCHeader, GCCard, GCStatCard, GCStatusChip, GCButton,
     FadeIn, SkeletonBlock, PulseDot, AnimatedCounter, GlowBorder,
@@ -30,7 +31,7 @@ import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
 export default function SummitScreen() {
     const router = useRouter();
     const bottomPad = useBottomInsetPadding(32);
-    const { isTablet } = useLayout();
+    const layout = useLayout();
     const { unreadCount } = useNotifications();
     const { toggle: toggleCommand } = useQuickCommand();
 
@@ -52,6 +53,213 @@ export default function SummitScreen() {
     const d = dashboard.data;
     const v = vitals.data;
     const isLoading = dashboard.loading && !d;
+
+    const kpiSection = isLoading ? (
+        <SectionGrid style={styles.kpiGrid} minItemWidthPhone={140} minItemWidthTablet={220}>
+            {[0, 1, 2, 3].map((i) => (
+                <View key={i} style={styles.kpiSkeleton}>
+                    <SkeletonBlock width={80} height={12} style={{ marginBottom: 8 }} />
+                    <SkeletonBlock width={50} height={28} style={{ marginBottom: 4 }} />
+                    <SkeletonBlock width={100} height={10} />
+                </View>
+            ))}
+        </SectionGrid>
+    ) : (
+        <FadeIn delay={100}>
+            <SectionGrid style={styles.kpiGrid} minItemWidthPhone={140} minItemWidthTablet={220}>
+                <AnimatedStatCard
+                    label="Pending approvals"
+                    value={d?.pendingApprovals ?? 0}
+                    note="Actions waiting on you"
+                    tone={(d?.pendingApprovals ?? 0) > 0 ? 'warning' : 'default'}
+                />
+                <AnimatedStatCard
+                    label="Active sub-agents"
+                    value={d?.activeSubagents ?? 0}
+                    note="Task sessions in flight"
+                    tone={(d?.activeSubagents ?? 0) > 0 ? 'accent' : 'default'}
+                />
+                <GCStatCard
+                    label="Daily cost"
+                    value={d ? `$${d.dailyCostUsd.toFixed(4)}` : '—'}
+                    note="Today on this node"
+                />
+                <GCStatCard
+                    label="Sessions"
+                    value={d?.sessions?.length ?? '—'}
+                    note="Tracked this node"
+                />
+            </SectionGrid>
+        </FadeIn>
+    );
+
+    const attentionSection = (
+        <FadeIn delay={200}>
+            {d && d.pendingApprovals > 0 ? (
+                <GlowBorder color={colors.ember} intensity={0.5} style={styles.glowSection}>
+                    <GCCard variant="warning" style={{ borderWidth: 0, margin: 0 }}>
+                        <Text style={styles.sectionTitle}>WHAT NEEDS ATTENTION</Text>
+                        <Text style={styles.sectionSubtitle}>
+                            Operator triage so you know what to do next.
+                        </Text>
+                        <Pressable
+                            style={styles.attentionRow}
+                            onPress={() => router.push('/(tabs)/approvals')}
+                        >
+                            <PulseDot color={colors.ember} size={6} />
+                            <GCStatusChip tone="warning">Needs review</GCStatusChip>
+                            <Text style={styles.attentionText}>
+                                {d.pendingApprovals} approval{d.pendingApprovals !== 1 ? 's' : ''} waiting on you
+                            </Text>
+                            <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
+                        </Pressable>
+                        {d.activeSubagents > 0 ? (
+                            <Pressable style={styles.attentionRow} onPress={() => router.push('/(tabs)/chat')}>
+                                <PulseDot color={colors.cyan} size={6} />
+                                <GCStatusChip tone="live">Live</GCStatusChip>
+                                <Text style={styles.attentionText}>
+                                    {d.activeSubagents} sub-agent session{d.activeSubagents !== 1 ? 's' : ''} active
+                                </Text>
+                                <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
+                            </Pressable>
+                        ) : null}
+                    </GCCard>
+                </GlowBorder>
+            ) : (
+                <GCCard style={styles.section}>
+                    <Text style={styles.sectionTitle}>WHAT NEEDS ATTENTION</Text>
+                    <Text style={styles.sectionSubtitle}>
+                        Operator triage so you know what to do next.
+                    </Text>
+                    <Text style={styles.noIssues}>
+                        No urgent blockers detected. Use quick actions to move forward.
+                    </Text>
+                    {d && d.activeSubagents > 0 ? (
+                        <Pressable style={styles.attentionRow} onPress={() => router.push('/(tabs)/chat')}>
+                            <PulseDot color={colors.cyan} size={6} />
+                            <GCStatusChip tone="live">Live</GCStatusChip>
+                            <Text style={styles.attentionText}>
+                                {d.activeSubagents} sub-agent session{d.activeSubagents !== 1 ? 's' : ''} active
+                            </Text>
+                            <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
+                        </Pressable>
+                    ) : null}
+                </GCCard>
+            )}
+        </FadeIn>
+    );
+
+    const quickActionsSection = (
+        <FadeIn delay={300}>
+            <GCCard style={styles.section}>
+                <Text style={styles.sectionTitle}>QUICK ACTIONS</Text>
+                <SectionGrid style={styles.actionGrid} minItemWidthPhone={140} minItemWidthTablet={180}>
+                    <ActionButton icon="chatbubbles" label="Open Chat"
+                        onPress={() => router.push('/(tabs)/chat')} />
+                    <ActionButton icon="lock-closed" label="Approvals"
+                        onPress={() => router.push('/(tabs)/approvals')} />
+                    <ActionButton icon="people" label="Herd HQ"
+                        onPress={() => router.push('/(tabs)/herd')} />
+                    <ActionButton icon="search" label="Command"
+                        onPress={toggleCommand} />
+                    <ActionButton icon="wallet" label="Cost Tracker"
+                        onPress={() => router.push('/(tabs)/costs' as any)} />
+                    <ActionButton icon="heart-circle" label="Health"
+                        onPress={() => router.push('/(tabs)/health' as any)} />
+                    <ActionButton icon="settings-sharp" label="Settings"
+                        onPress={() => router.push('/(tabs)/settings')} />
+                </SectionGrid>
+            </GCCard>
+        </FadeIn>
+    );
+
+    const vitalsSection = v ? (
+        <FadeIn delay={400}>
+            <GCCard style={styles.section}>
+                <View style={styles.vitalsTitleRow}>
+                    <Text style={styles.sectionTitle}>CITADEL VITALS</Text>
+                    <PulseDot color={colors.success} size={5} />
+                </View>
+                <Text style={styles.sectionSubtitle}>
+                    {v.hostname} · {v.platform}
+                </Text>
+                <SectionGrid style={styles.vitalsGrid} minItemWidthPhone={100} minItemWidthTablet={120}>
+                    <VitalItem label="CPU cores" value={String(v.cpuCount)} icon="hardware-chip" />
+                    <VitalItem label="Memory used" value={formatBytes(v.memoryUsedBytes)} icon="server" />
+                    <VitalItem label="Process RSS" value={formatBytes(v.processRssBytes)} icon="analytics" />
+                    <VitalItem label="Uptime" value={formatUptime(v.uptimeSeconds)} icon="time" />
+                </SectionGrid>
+            </GCCard>
+        </FadeIn>
+    ) : null;
+
+    const taskSection = d && d.taskStatusCounts.length > 0 ? (
+        <FadeIn delay={500}>
+            <GCCard style={styles.section}>
+                <Text style={styles.sectionTitle}>TRAILBOARD STATUS</Text>
+                <SectionGrid style={styles.taskCountsGrid} minItemWidthPhone={90} minItemWidthTablet={120}>
+                    {d.taskStatusCounts.map((row) => (
+                        <View key={row.status} style={styles.taskCountItem}>
+                            <AnimatedCounter value={row.count} style={styles.taskCountValue} />
+                            <Text style={styles.taskCountLabel}>{row.status}</Text>
+                        </View>
+                    ))}
+                </SectionGrid>
+            </GCCard>
+        </FadeIn>
+    ) : null;
+
+    const recentActivitySection = d && d.recentEvents.length > 0 ? (
+        <FadeIn delay={600}>
+            <GCCard style={styles.section}>
+                <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
+                {d.recentEvents.slice(0, layout.triplePane ? 8 : 5).map((event) => {
+                    const meta = getRealtimeEventMeta(event);
+                    return (
+                        <View key={event.eventId} style={styles.eventRow}>
+                            <View style={styles.eventDot} />
+                            <Text style={styles.eventType}>{meta.title}</Text>
+                            <Text style={styles.eventTime}>
+                                {new Date(event.timestamp).toLocaleTimeString()}
+                            </Text>
+                        </View>
+                    );
+                })}
+            </GCCard>
+        </FadeIn>
+    ) : null;
+
+    const primaryColumn = (
+        <View style={styles.columnStack}>
+            {kpiSection}
+            {attentionSection}
+            {quickActionsSection}
+        </View>
+    );
+
+    const detailColumn = (
+        <View style={styles.columnStack}>
+            {vitalsSection}
+            {taskSection}
+            {recentActivitySection}
+        </View>
+    );
+    const hasDetailColumn = Boolean(vitalsSection || taskSection || recentActivitySection);
+    const commandContextPane = (
+        <ContextPane>
+            <Text style={styles.sectionTitle}>COMMAND CONTEXT</Text>
+            <Text style={styles.sectionSubtitle}>
+                Keep the active control surfaces visible while you work the deck.
+            </Text>
+            <View style={styles.inspectorList}>
+                <InspectorRow icon="search" label="Quick command" value="Jump anywhere" />
+                <InspectorRow icon="notifications" label="Unread alerts" value={String(unreadCount)} />
+                <InspectorRow icon="wallet" label="Daily cost" value={d ? `$${d.dailyCostUsd.toFixed(4)}` : '—'} />
+                <InspectorRow icon="people" label="Live agents" value={String(d?.activeSubagents ?? 0)} />
+            </View>
+        </ContextPane>
+    );
+    const tabletDetailPane = hasDetailColumn ? detailColumn : layout.triplePane ? commandContextPane : null;
 
     return (
         <View style={styles.safe} >
@@ -97,186 +305,20 @@ export default function SummitScreen() {
                         </GCCard>
                     </FadeIn>
                 ) : null}
-
-                {/* KPI Grid — with skeleton loading */}
-                {isLoading ? (
-                    <View style={[styles.kpiGrid, isTablet && styles.kpiGridTablet]}>
-                        {[0, 1, 2, 3].map((i) => (
-                            <View key={i} style={styles.kpiSkeleton}>
-                                <SkeletonBlock width={80} height={12} style={{ marginBottom: 8 }} />
-                                <SkeletonBlock width={50} height={28} style={{ marginBottom: 4 }} />
-                                <SkeletonBlock width={100} height={10} />
-                            </View>
-                        ))}
-                    </View>
-                ) : (
-                    <FadeIn delay={100}>
-                        <View style={[styles.kpiGrid, isTablet && styles.kpiGridTablet]}>
-                            <AnimatedStatCard
-                                label="Pending approvals"
-                                value={d?.pendingApprovals ?? 0}
-                                note="Actions waiting on you"
-                                tone={(d?.pendingApprovals ?? 0) > 0 ? 'warning' : 'default'}
-                            />
-                            <AnimatedStatCard
-                                label="Active sub-agents"
-                                value={d?.activeSubagents ?? 0}
-                                note="Task sessions in flight"
-                                tone={(d?.activeSubagents ?? 0) > 0 ? 'accent' : 'default'}
-                            />
-                            <GCStatCard
-                                label="Daily cost"
-                                value={d ? `$${d.dailyCostUsd.toFixed(4)}` : '—'}
-                                note="Today on this node"
-                            />
-                            <GCStatCard
-                                label="Sessions"
-                                value={d?.sessions?.length ?? '—'}
-                                note="Tracked this node"
-                            />
-                        </View>
-                    </FadeIn>
-                )}
-
-                {/* Attention Panel with glow */}
-                <FadeIn delay={200}>
-                    {d && d.pendingApprovals > 0 ? (
-                        <GlowBorder color={colors.ember} intensity={0.5}
-                            style={{ marginHorizontal: spacing.xl, marginBottom: spacing.lg }}>
-                            <GCCard variant="warning" style={{ borderWidth: 0, margin: 0 }}>
-                                <Text style={styles.sectionTitle}>WHAT NEEDS ATTENTION</Text>
-                                <Text style={styles.sectionSubtitle}>
-                                    Operator triage so you know what to do next.
-                                </Text>
-                                <Pressable
-                                    style={styles.attentionRow}
-                                    onPress={() => router.push('/(tabs)/approvals')}
-                                >
-                                    <PulseDot color={colors.ember} size={6} />
-                                    <GCStatusChip tone="warning">Needs review</GCStatusChip>
-                                    <Text style={styles.attentionText}>
-                                        {d.pendingApprovals} approval{d.pendingApprovals !== 1 ? 's' : ''} waiting on you
-                                    </Text>
-                                    <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
-                                </Pressable>
-                                {d.activeSubagents > 0 ? (
-                                    <Pressable style={styles.attentionRow} onPress={() => router.push('/(tabs)/chat')}>
-                                        <PulseDot color={colors.cyan} size={6} />
-                                        <GCStatusChip tone="live">Live</GCStatusChip>
-                                        <Text style={styles.attentionText}>
-                                            {d.activeSubagents} sub-agent session{d.activeSubagents !== 1 ? 's' : ''} active
-                                        </Text>
-                                        <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
-                                    </Pressable>
-                                ) : null}
-                            </GCCard>
-                        </GlowBorder>
+                <AdaptiveContainer style={styles.content}>
+                    {layout.dualPane && tabletDetailPane ? (
+                        <MasterDetailShell
+                            master={primaryColumn}
+                            detail={tabletDetailPane}
+                            inspector={layout.triplePane && hasDetailColumn ? commandContextPane : undefined}
+                        />
                     ) : (
-                        <GCCard style={styles.section}>
-                            <Text style={styles.sectionTitle}>WHAT NEEDS ATTENTION</Text>
-                            <Text style={styles.sectionSubtitle}>
-                                Operator triage so you know what to do next.
-                            </Text>
-                            <Text style={styles.noIssues}>
-                                No urgent blockers detected. Use quick actions to move forward.
-                            </Text>
-                            {d && d.activeSubagents > 0 ? (
-                                <Pressable style={styles.attentionRow} onPress={() => router.push('/(tabs)/chat')}>
-                                    <PulseDot color={colors.cyan} size={6} />
-                                    <GCStatusChip tone="live">Live</GCStatusChip>
-                                    <Text style={styles.attentionText}>
-                                        {d.activeSubagents} sub-agent session{d.activeSubagents !== 1 ? 's' : ''} active
-                                    </Text>
-                                    <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
-                                </Pressable>
-                            ) : null}
-                        </GCCard>
-                    )}
-                </FadeIn>
-
-                {/* Quick Actions */}
-                <FadeIn delay={300}>
-                    <GCCard style={styles.section}>
-                        <Text style={styles.sectionTitle}>QUICK ACTIONS</Text>
-                        <View style={[styles.actionGrid, isTablet && styles.actionGridTablet]}>
-                            <ActionButton icon="chatbubbles" label="Open Chat"
-                                onPress={() => router.push('/(tabs)/chat')} />
-                            <ActionButton icon="lock-closed" label="Approvals"
-                                onPress={() => router.push('/(tabs)/approvals')} />
-                            <ActionButton icon="people" label="Herd HQ"
-                                onPress={() => router.push('/(tabs)/herd')} />
-                            <ActionButton icon="search" label="⌘ Command"
-                                onPress={toggleCommand} />
-                            <ActionButton icon="wallet" label="Cost Tracker"
-                                onPress={() => router.push('/(tabs)/costs' as any)} />
-                            <ActionButton icon="heart-circle" label="Health"
-                                onPress={() => router.push('/(tabs)/health' as any)} />
-                            <ActionButton icon="settings-sharp" label="Settings"
-                                onPress={() => router.push('/(tabs)/settings')} />
+                        <View style={styles.columnStack}>
+                            {primaryColumn}
+                            {detailColumn}
                         </View>
-                    </GCCard>
-                </FadeIn>
-
-                {/* System Vitals */}
-                {v ? (
-                    <FadeIn delay={400}>
-                        <GCCard style={styles.section}>
-                            <View style={styles.vitalsTitleRow}>
-                                <Text style={styles.sectionTitle}>CITADEL VITALS</Text>
-                                <PulseDot color={colors.success} size={5} />
-                            </View>
-                            <Text style={styles.sectionSubtitle}>
-                                {v.hostname} · {v.platform}
-                            </Text>
-                            <View style={styles.vitalsGrid}>
-                                <VitalItem label="CPU cores" value={String(v.cpuCount)} icon="hardware-chip" />
-                                <VitalItem label="Memory used" value={formatBytes(v.memoryUsedBytes)} icon="server" />
-                                <VitalItem label="Process RSS" value={formatBytes(v.processRssBytes)} icon="analytics" />
-                                <VitalItem label="Uptime" value={formatUptime(v.uptimeSeconds)} icon="time" />
-                            </View>
-                        </GCCard>
-                    </FadeIn>
-                ) : null}
-
-                {/* Task Status Counts */}
-                {d && d.taskStatusCounts.length > 0 ? (
-                    <FadeIn delay={500}>
-                        <GCCard style={styles.section}>
-                            <Text style={styles.sectionTitle}>TRAILBOARD STATUS</Text>
-                            <View style={styles.taskCountsGrid}>
-                                {d.taskStatusCounts.map((row) => (
-                                    <View key={row.status} style={styles.taskCountItem}>
-                                        <AnimatedCounter value={row.count} style={styles.taskCountValue} />
-                                        <Text style={styles.taskCountLabel}>{row.status}</Text>
-                                    </View>
-                                ))}
-                            </View>
-                        </GCCard>
-                    </FadeIn>
-                ) : null}
-
-                {/* Recent Events */}
-                {d && d.recentEvents.length > 0 ? (
-                    <FadeIn delay={600}>
-                        <GCCard style={styles.section}>
-                            <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
-                            {d.recentEvents.slice(0, 5).map((event) => {
-                                const meta = getRealtimeEventMeta(event);
-                                return (
-                                    <View key={event.eventId} style={styles.eventRow}>
-                                        <View style={styles.eventDot} />
-                                        <Text style={styles.eventType}>{meta.title}</Text>
-                                        <Text style={styles.eventTime}>
-                                            {new Date(event.timestamp).toLocaleTimeString()}
-                                        </Text>
-                                    </View>
-                                );
-                            })}
-                        </GCCard>
-                    </FadeIn>
-                ) : null}
-
-                <View style={{ height: 24 }} />
+                    )}
+                </AdaptiveContainer>
             </ScrollView>
         </View>
     );
@@ -356,14 +398,11 @@ const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
     scroll: { flex: 1 },
     content: { paddingBottom: 32 },
-    errorCard: { marginHorizontal: spacing.xl, marginTop: spacing.md },
+    columnStack: { gap: spacing.lg },
+    errorCard: { marginTop: spacing.md, marginBottom: spacing.md },
     errorText: { color: colors.crimson, ...typography.bodyMd, marginBottom: spacing.sm },
-
-    kpiGrid: {
-        flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md,
-        paddingHorizontal: spacing.xl, marginBottom: spacing.lg,
-    },
-    kpiGridTablet: { gap: spacing.lg },
+    glowSection: { marginBottom: spacing.lg },
+    kpiGrid: { marginBottom: spacing.lg },
     kpiSkeleton: {
         backgroundColor: colors.bgCard, borderRadius: radii.md, borderWidth: 1,
         borderColor: colors.borderCyan, padding: spacing.lg, flex: 1, minWidth: 140,
@@ -384,7 +423,7 @@ const styles = StyleSheet.create({
     statValue: { ...typography.displayLg, color: colors.textPrimary },
     statNote: { ...typography.caption, color: colors.textDim, marginTop: spacing.xs },
 
-    section: { marginHorizontal: spacing.xl, marginBottom: spacing.lg },
+    section: { marginBottom: spacing.lg },
     sectionTitle: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.xs },
     sectionSubtitle: { ...typography.bodySm, color: colors.textDim, marginBottom: spacing.md },
 
@@ -397,23 +436,23 @@ const styles = StyleSheet.create({
     attentionText: { ...typography.bodyMd, color: colors.textSecondary, flex: 1 },
     noIssues: { ...typography.bodyMd, color: colors.textDim, fontStyle: 'italic' },
 
-    actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-    actionGridTablet: { gap: spacing.md },
+    actionGrid: {},
     actionBtn: {
         flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
         backgroundColor: colors.bgCard, borderRadius: radii.sm, borderWidth: 1,
         borderColor: colors.borderCyan, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2,
+        minHeight: 48,
     },
     actionBtnPressed: { opacity: 0.7, backgroundColor: colors.bgPanelSolid },
     actionBtnText: { ...typography.eyebrow, color: colors.textPrimary, fontSize: 11 },
 
-    vitalsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
-    vitalItem: { minWidth: 100 },
+    vitalsGrid: {},
+    vitalItem: { minWidth: 100, flexGrow: 1 },
     vitalIcon: { marginBottom: 2 },
     vitalLabel: { ...typography.caption, color: colors.textDim },
     vitalValue: { ...typography.displayMd, color: colors.textPrimary, fontSize: 18 },
 
-    taskCountsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+    taskCountsGrid: {},
     taskCountItem: {
         backgroundColor: colors.bgInset, borderRadius: radii.sm,
         paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minWidth: 72, alignItems: 'center',
@@ -429,6 +468,18 @@ const styles = StyleSheet.create({
     eventDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.cyan, opacity: 0.5 },
     eventType: { ...typography.bodySm, color: colors.textSecondary, flex: 1 },
     eventTime: { ...typography.caption, color: colors.textDim, fontFamily: 'monospace' },
+    inspectorList: { gap: spacing.sm },
+    inspectorRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        paddingVertical: spacing.sm,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.borderQuiet,
+    },
+    inspectorCopy: { flex: 1 },
+    inspectorLabel: { ...typography.caption, color: colors.textDim },
+    inspectorValue: { ...typography.bodyMd, color: colors.textPrimary },
 
     // Header button styles
     headerBtn: {
@@ -448,3 +499,23 @@ const styles = StyleSheet.create({
         color: '#fff', fontSize: 10, fontWeight: '700' as const,
     },
 });
+
+function InspectorRow({
+    icon,
+    label,
+    value,
+}: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    value: string;
+}) {
+    return (
+        <View style={styles.inspectorRow}>
+            <Ionicons name={icon} size={16} color={colors.cyan} />
+            <View style={styles.inspectorCopy}>
+                <Text style={styles.inspectorLabel}>{label}</Text>
+                <Text style={styles.inspectorValue}>{value}</Text>
+            </View>
+        </View>
+    );
+}

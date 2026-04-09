@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import {
     GCHeader, GCCard, GCStatusChip, GCButton, FadeIn, PulseDot,
 } from '../../src/components/ui';
+import { AdaptiveContainer, SectionGrid } from '../../src/components/layout';
 import { colors, spacing, typography } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
@@ -88,6 +89,7 @@ export default function HealthScreen() {
                     />
                 }
             >
+                <AdaptiveContainer>
                 {/* Overall Status */}
                 <FadeIn delay={100}>
                     <GCCard style={s.section}>
@@ -126,13 +128,13 @@ export default function HealthScreen() {
                         <FadeIn delay={200}>
                             <GCCard style={s.section}>
                                 <Text style={s.sectionTitle}>HOST INFORMATION</Text>
-                                <View style={s.infoGrid}>
+                                <SectionGrid style={s.infoGrid} minItemWidthPhone={220} minItemWidthTablet={260}>
                                     <InfoRow label="Hostname" value={v.hostname} />
                                     <InfoRow label="Platform" value={v.platform} />
                                     <InfoRow label="Release" value={v.release} />
                                     <InfoRow label="CPU Cores" value={String(v.cpuCount)} />
                                     <InfoRow label="Uptime" value={formatUptime(v.uptimeSeconds)} />
-                                </View>
+                                </SectionGrid>
                             </GCCard>
                         </FadeIn>
 
@@ -140,7 +142,7 @@ export default function HealthScreen() {
                         <FadeIn delay={300}>
                             <GCCard style={s.section}>
                                 <Text style={s.sectionTitle}>MEMORY UTILIZATION</Text>
-                                <View style={s.gaugeRow}>
+                                <SectionGrid style={s.gaugeGrid} minItemWidthPhone={120} minItemWidthTablet={220}>
                                     <GaugeRing
                                         value={v.memoryUsedBytes}
                                         max={v.memoryTotalBytes}
@@ -162,7 +164,7 @@ export default function HealthScreen() {
                                         color={colors.success}
                                         unit=""
                                     />
-                                </View>
+                                </SectionGrid>
                             </GCCard>
                         </FadeIn>
 
@@ -208,6 +210,7 @@ export default function HealthScreen() {
                 )}
 
                 <View style={{ height: 32 }} />
+                </AdaptiveContainer>
             </ScrollView>
         </View>
     );
@@ -241,7 +244,7 @@ function MemoryBar({ label, value, total, color }: {
 
 const s = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
-    content: { paddingHorizontal: spacing.xl, paddingBottom: 32 },
+    content: { paddingBottom: 32 },
     section: { marginBottom: spacing.lg },
     sectionTitle: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.md },
     emptyText: { ...typography.bodyMd, color: colors.textDim, fontStyle: 'italic' },
@@ -254,19 +257,22 @@ const s = StyleSheet.create({
     statusSubtitle: { ...typography.caption, color: colors.textDim },
     statusActions: { marginTop: spacing.sm },
 
-    infoGrid: { gap: 0 },
+    infoGrid: { gap: spacing.sm },
     infoRow: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingVertical: spacing.sm,
-        borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.borderQuiet,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.md,
+        borderRadius: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.borderQuiet,
+        borderColor: colors.borderQuiet,
+        backgroundColor: colors.bgInset,
     },
     infoLabel: { ...typography.bodySm, color: colors.textMuted },
     infoValue: { ...typography.bodySm, color: colors.textPrimary, fontFamily: 'monospace' },
 
-    gaugeRow: {
-        flexDirection: 'row', justifyContent: 'space-around', marginTop: spacing.sm,
-    },
-    gauge: { alignItems: 'center', gap: spacing.xs },
+    gaugeGrid: { marginTop: spacing.sm },
+    gauge: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.sm },
     gaugeCircle: {
         width: 68, height: 68, borderRadius: 34, borderWidth: 3,
         alignItems: 'center', justifyContent: 'center',
