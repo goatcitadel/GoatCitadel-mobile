@@ -90,18 +90,21 @@ import {
     setChatSessionStreamingTurn,
     takeNextQueuedChatSessionMessage,
     useChatSessionRuntime,
+    type ComposerAttachmentRecord,
     type QueuedChatMessage,
 } from '../../../src/features/chat/chatRuntimeStore';
 import { resolveCurrentLocationContext } from '../../../src/features/chat/mobileContext';
 import { useGatewayAccess } from '../../../src/context/GatewayAccessContext';
+import { useShareIntents } from '../../../src/context/ShareIntentContext';
 
 export default function ChatThreadScreen() {
-    const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+    const { sessionId, shareDraftId } = useLocalSearchParams<{ sessionId: string; shareDraftId?: string }>();
     const router = useRouter();
     const layout = useLayout();
     const flatListRef = useRef<any>(null);
     const { showToast } = useToast();
     const { shellState, refreshAccess, reportAuthExpired } = useGatewayAccess();
+    const { consumeDraft } = useShareIntents();
 
     const [composerText, setComposerText] = useState('');
     const [mode, setMode] = useState<ChatMode>('chat');
@@ -118,6 +121,7 @@ export default function ChatThreadScreen() {
     const [memoryMode, setMemoryMode] = useState<ChatMemoryMode>('auto');
     const [thinkingLevel, setThinkingLevel] = useState<ChatThinkingLevel>('standard');
     const [selectedImage, setSelectedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
+    const [composerAttachment, setComposerAttachment] = useState<ComposerAttachmentRecord | null>(null);
     const [specialistActionTargetId, setSpecialistActionTargetId] = useState<string | null>(null);
     const runtime = useChatSessionRuntime(sessionId);
     const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -288,7 +292,7 @@ export default function ChatThreadScreen() {
     const shouldPollThread = isServerRunning && !isStreaming;
     const streamingContent = runtime.streamingContent;
     const activeTools = runtime.activeTools;
-    const canSubmitDraft = Boolean(composerText.trim() || selectedImage);
+    const canSubmitDraft = Boolean(composerText.trim() || composerAttachment || selectedImage);
     const lastResumeRefreshRef = useRef(0);
 
     // Scroll to bottom on new content
@@ -300,6 +304,44 @@ export default function ChatThreadScreen() {
             return () => clearTimeout(timerId);
         }
     }, [thread.data?.turns.length, streamingContent]);
+
+    useEffect(() => {
+        if (!shareDraftId || Array.isArray(shareDraftId)) {
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            const draft = await consumeDraft(shareDraftId);
+            if (cancelled || !draft) {
+                return;
+            }
+
+            const nextText = draft.text?.trim() || draft.subject?.trim() || '';
+            if (nextText) {
+                setComposerText((current) => current.trim().length > 0 ? current : nextText);
+            }
+            if (draft.attachment) {
+                setSelectedImage(null);
+                setComposerAttachment({
+                    source: 'shared',
+                    uri: draft.attachment.uri,
+                    mimeType: draft.attachment.mimeType,
+                    fileName: draft.attachment.fileName,
+                });
+            }
+
+            showToast({
+                message: draft.attachment
+                    ? 'Shared content is staged in the composer. Review it before sending.'
+                    : 'Shared text is staged in the composer. Review it before sending.',
+                type: 'info',
+            });
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [consumeDraft, shareDraftId, showToast]);
 
     useEffect(() => {
         if (!sessionId || !shouldPollThread) {
@@ -363,9 +405,11 @@ export default function ChatThreadScreen() {
         setChatSessionActiveTools(sessionId, liveTools);
 
         try {
-            const uploadedAttachments = item.image
-                ? [await uploadSelectedImage(sessionId, item.image)]
-                : [];
+            const uploadedAttachments = item.attachment
+                ? [await uploadComposerAttachment(sessionId, item.attachment)]
+                : item.image
+                    ? [await uploadComposerAttachment(sessionId, normalizePickerAttachment(item.image))]
+                    : [];
             const locationContext = await resolveCurrentLocationContext(item.content);
 
             if (locationContext.status === 'permission-denied') {
@@ -621,6 +665,7 @@ export default function ChatThreadScreen() {
             id: `queue-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
             content: composerText.trim() || 'What is in this image?',
             image: selectedImage,
+            attachment: composerAttachment,
             mode,
             providerId: selectedProvider,
             model: selectedModel,
@@ -634,6 +679,7 @@ export default function ChatThreadScreen() {
         queueChatSessionMessage(sessionId, nextMessage, { front: priority });
         setComposerText('');
         setSelectedImage(null);
+        setComposerAttachment(null);
 
         if (priority) {
             const turnIdToCancel = activeTurnId;
@@ -676,6 +722,7 @@ export default function ChatThreadScreen() {
         isBusy,
         memoryMode,
         mode,
+        composerAttachment,
         selectedImage,
         selectedModel,
         selectedProvider,
@@ -743,6 +790,7 @@ export default function ChatThreadScreen() {
 
         if (!result.canceled) {
             setSelectedImage(result.assets[0]);
+            setComposerAttachment(normalizePickerAttachment(result.assets[0]));
         }
     };
 
@@ -762,6 +810,7 @@ export default function ChatThreadScreen() {
 
         if (!result.canceled) {
             setSelectedImage(result.assets[0]);
+            setComposerAttachment(normalizePickerAttachment(result.assets[0]));
         }
     };
 
@@ -1244,11 +1293,17 @@ export default function ChatThreadScreen() {
                             ))}
                         </View>
                     ) : null}
-                    {selectedImage ? (
+                    {composerAttachment ? (
                         <View style={styles.composerAttachments}>
                             <View style={styles.imagePreviewWrapper}>
-                                <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
-                                <Pressable style={styles.imagePreviewClose} onPress={() => setSelectedImage(null)}>
+                                <Image source={{ uri: composerAttachment.uri }} style={styles.imagePreview} />
+                                <Pressable
+                                    style={styles.imagePreviewClose}
+                                    onPress={() => {
+                                        setSelectedImage(null);
+                                        setComposerAttachment(null);
+                                    }}
+                                >
                                     <Ionicons name="close-circle" size={20} color={colors.bgCore} />
                                 </Pressable>
                             </View>
@@ -1863,19 +1918,36 @@ function summarizeRoutedSpecialists(trace: ChatTurnTraceRecord): string {
         .join('|') ?? '';
 }
 
-async function uploadSelectedImage(
-    sessionId: string,
+function normalizePickerAttachment(
     asset: ImagePicker.ImagePickerAsset,
+): ComposerAttachmentRecord {
+    return {
+        source: 'picker',
+        uri: asset.uri,
+        mimeType: asset.mimeType || 'image/jpeg',
+        fileName: resolveAttachmentFileName(asset),
+    };
+}
+
+async function uploadComposerAttachment(
+    sessionId: string,
+    attachment: ComposerAttachmentRecord,
 ): Promise<ChatAttachmentRecord> {
-    const bytesBase64 = await FileSystem.readAsStringAsync(asset.uri, {
+    const bytesBase64 = await FileSystem.readAsStringAsync(attachment.uri, {
         encoding: FileSystem.EncodingType.Base64,
     });
     return uploadChatAttachment({
         sessionId,
-        fileName: resolveAttachmentFileName(asset),
-        mimeType: asset.mimeType || 'image/jpeg',
+        fileName: attachment.fileName || resolveAttachmentNameFromUri(attachment.uri),
+        mimeType: attachment.mimeType || 'application/octet-stream',
         bytesBase64,
     });
+}
+
+function resolveAttachmentNameFromUri(uri: string): string {
+    const cleaned = uri.split('?')[0] ?? uri;
+    const next = cleaned.split('/').pop()?.trim();
+    return next && next.length > 0 ? next : `shared-${Date.now()}`;
 }
 
 function buildOutgoingParts(

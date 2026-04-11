@@ -21,6 +21,7 @@ interface MenuItem {
 }
 
 const MENU: MenuItem[] = [
+    { icon: 'shield-checkmark', label: 'Gatehouse', desc: 'Approvals & device access', color: colors.ember, route: '/(tabs)/approvals', group: 'Activity' },
     { icon: 'notifications', label: 'Notifications', desc: 'Alerts & event feed', color: colors.cyan, route: '/(tabs)/notifications', group: 'Activity' },
     { icon: 'pulse', label: 'Pulse', desc: 'Live event stream', color: colors.cyan, route: '/(tabs)/pulse', group: 'Activity' },
     { icon: 'terminal', label: 'System Logs', desc: 'Real-time log viewer', color: '#10b981', route: '/(tabs)/logs', group: 'Activity' },
@@ -32,6 +33,7 @@ const MENU: MenuItem[] = [
     { icon: 'extension-puzzle', label: 'Skills', desc: 'Manage skill states', color: colors.ember, route: '/(tabs)/skills', group: 'Systems' },
     { icon: 'server', label: 'MCP Servers', desc: 'Connect & monitor tool servers', color: '#f472b6', route: '/(tabs)/mcp', group: 'Systems' },
     { icon: 'heart-circle', label: 'Health', desc: 'System vitals & monitoring', color: colors.success, route: '/(tabs)/health', group: 'Systems' },
+    { icon: 'shield-half', label: 'Privacy Center', desc: 'Consent, audit trail & panic-off', color: colors.cyan, route: '/(tabs)/privacy', group: 'Systems' },
     { icon: 'settings', label: 'Settings', desc: 'Providers, profiles & config', color: colors.textMuted, route: '/(tabs)/settings', group: 'Systems' },
     { icon: 'easel', label: 'Canvas', desc: 'Companion-backed A2UI lane', color: colors.cyan, route: '/(tabs)/canvas', group: 'Build' },
     { icon: 'layers', label: 'Parity Lanes', desc: 'Browser, voice & plugin proofs', color: '#a78bfa', route: '/(tabs)/parity', group: 'Build' },

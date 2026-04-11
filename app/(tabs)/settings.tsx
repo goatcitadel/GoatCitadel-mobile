@@ -25,6 +25,7 @@ import {
     formatGatewayAccessDiagnostics,
     gatewayShellAccessToneToChipTone,
 } from '../../src/features/gateway/accessState';
+import { triggerPhoneAssistPanicOff } from '../../src/features/phoneAssist';
 
 const TOOL_PROFILES = ['minimal', 'standard', 'coding', 'ops', 'research', 'danger'] as const;
 const BUDGET_MODES = ['saver', 'balanced', 'power'] as const;
@@ -113,6 +114,28 @@ export default function SettingsScreen() {
             setSaving(false);
         }
     };
+
+    const openPrivacyCenter = useCallback(() => {
+        router.push('/(tabs)/privacy' as any);
+    }, [router]);
+
+    const handleEmergencyDisable = useCallback(() => {
+        Alert.alert(
+            'Emergency disable',
+            'This turns off cloud sync defaults, revokes any active phone-assist consents, and records an audit receipt on this device.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Disable now',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await triggerPhoneAssistPanicOff();
+                        showToast({ message: 'Phone-assist panic-off triggered', type: 'warning' });
+                    },
+                },
+            ],
+        );
+    }, [showToast]);
 
     const switchProvider = async (providerId: string) => {
         const provider = settings.data?.llm.providers.find(p => p.providerId === providerId);
@@ -277,6 +300,10 @@ export default function SettingsScreen() {
                         Auth mode and network allowlist are configured from Mission Control. If this device loses access,
                         reopen the login gate and request approval from another trusted session.
                     </Text>
+                    <View style={s.actionRow}>
+                        <GCButton title="Privacy Center" onPress={openPrivacyCenter} variant="secondary" size="sm" />
+                        <GCButton title="Emergency Disable" onPress={handleEmergencyDisable} variant="danger" size="sm" />
+                    </View>
                 </GCCard>
             ) : null}
 
@@ -383,6 +410,7 @@ const s = StyleSheet.create({
     },
     infoLabel: { ...typography.bodySm, color: colors.textMuted },
     infoValue: { ...typography.bodySm, color: colors.textSecondary },
+    actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
     dimText: { ...typography.bodySm, color: colors.textDim },
     aboutText: { ...typography.bodyMd, color: colors.textSecondary },
     summaryPane: { gap: spacing.md },

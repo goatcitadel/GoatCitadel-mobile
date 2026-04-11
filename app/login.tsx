@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
     View, Text, TextInput, Pressable, StyleSheet, Animated,
     Easing, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Dimensions,
+    Alert,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,6 +40,13 @@ import type {
 } from '../src/api/types';
 import { useGatewayAccess } from '../src/context/GatewayAccessContext';
 import { deriveGatewayShellAccessState } from '../src/features/gateway/accessState';
+import {
+    appendPhoneAssistAuditEvent,
+    grantCapabilityConsent,
+    startNativeOtpAssist,
+    stopNativeOtpAssist,
+    subscribeToNativeOtpAssist,
+} from '../src/features/phoneAssist';
 
 type AccessView = GatewayAccessPreflightResult | {
     status: 'idle' | 'checking';
@@ -76,6 +84,9 @@ export default function LoginScreen() {
     const [deviceApprovalBusy, setDeviceApprovalBusy] = useState(false);
     const [deviceLabel, setDeviceLabel] = useState(inferPendingDeviceLabel());
     const [pendingDeviceApproval, setPendingDeviceApproval] = useState<PendingDeviceApprovalRequest | null>(null);
+    const [otpAssistStatus, setOtpAssistStatus] = useState<'idle' | 'waiting' | 'prompted' | 'matched' | 'timeout' | 'cancelled' | 'error'>('idle');
+    const [otpAssistDetail, setOtpAssistDetail] = useState<string>('One-time code helper is off until you start it.');
+    const [otpAssistBusy, setOtpAssistBusy] = useState(false);
 
     const logoScale = useRef(new Animated.Value(0.7)).current;
     const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -125,6 +136,64 @@ export default function LoginScreen() {
         ]).start();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToNativeOtpAssist((event) => {
+            const nextStatus = event.status === 'started'
+                ? 'waiting'
+                : event.status === 'prompted'
+                    ? 'prompted'
+                    : event.status === 'matched'
+                        ? 'matched'
+                        : event.status === 'timeout'
+                            ? 'timeout'
+                            : event.status === 'cancelled'
+                                ? 'cancelled'
+                                : 'error';
+            setOtpAssistBusy(false);
+            setOtpAssistStatus(nextStatus);
+            setOtpAssistDetail(event.detail || 'One-time code helper updated.');
+
+            void appendPhoneAssistAuditEvent({
+                type: event.status === 'started'
+                    ? 'otp_assist_started'
+                    : event.status === 'prompted'
+                        ? 'otp_assist_prompted'
+                        : event.status === 'matched'
+                            ? 'otp_assist_matched'
+                            : event.status === 'timeout'
+                                ? 'otp_assist_timeout'
+                                : event.status === 'error'
+                                    ? 'otp_assist_error'
+                                    : 'otp_assist_cancelled',
+                capability: 'otp_assist',
+                summary: event.status === 'matched'
+                    ? 'OTP assist captured a verification message'
+                    : event.status === 'error'
+                        ? 'OTP assist failed'
+                    : `OTP assist ${event.status}`,
+                detail: event.detail,
+                sensitivity: 'moderate',
+            });
+
+            if (event.status === 'matched') {
+                if (event.code) {
+                    setToken(event.code);
+                    setShowToken(true);
+                    setOtpAssistDetail(`Code ready: ${event.code}`);
+                } else if (event.message) {
+                    setToken(event.message);
+                    setShowToken(true);
+                    setOtpAssistDetail('Verification message captured. Review the token field before connecting.');
+                }
+            }
+        });
+
+        return () => {
+            unsubscribe();
+            void stopNativeOtpAssist();
+        };
     }, []);
 
     useEffect(() => {
@@ -212,9 +281,13 @@ export default function LoginScreen() {
             authToken: activeCompanionSession ? undefined : trimmedToken,
             companionSession: activeCompanionSession,
         });
+        await stopNativeOtpAssist();
         setPendingDeviceApproval(null);
         setDeviceApprovalError(null);
         setFormError(null);
+        setOtpAssistBusy(false);
+        setOtpAssistStatus('idle');
+        setOtpAssistDetail('One-time code helper is off until you start it.');
         setAccess(readyResult);
         setAccessResult(readyResult);
         if (Platform.OS !== 'web') {
@@ -331,6 +404,63 @@ export default function LoginScreen() {
         await runPreflight(url, token, true);
     };
 
+    const handleStartOtpAssist = async () => {
+        Alert.alert(
+            'Use one-time code helper?',
+            'Citadel will ask Android to show a single-message consent prompt for an incoming verification SMS. It does not read your SMS inbox or keep message history.',
+            [
+                { text: 'Not now', style: 'cancel' },
+                {
+                    text: 'Start helper',
+                    onPress: async () => {
+                        setOtpAssistBusy(true);
+                        setOtpAssistStatus('waiting');
+                        setOtpAssistDetail('Waiting for Android to start the one-time code helper…');
+                        try {
+                            await grantCapabilityConsent('otp_assist', 'login_token');
+                            const availability = await startNativeOtpAssist({
+                                flow: 'login_token',
+                                timeoutMs: 180_000,
+                            });
+                            if (!availability || availability.status === 'blocked') {
+                                setOtpAssistBusy(false);
+                                setOtpAssistStatus('error');
+                                setOtpAssistDetail(availability?.detail || 'OTP assist is not available on this device.');
+                                await appendPhoneAssistAuditEvent({
+                                    type: 'otp_assist_error',
+                                    capability: 'otp_assist',
+                                    summary: 'OTP assist failed',
+                                    detail: availability?.detail || 'OTP assist is not available on this device.',
+                                    sensitivity: 'moderate',
+                                });
+                            } else {
+                                setOtpAssistDetail(availability.detail);
+                            }
+                        } catch (error) {
+                            setOtpAssistBusy(false);
+                            setOtpAssistStatus('error');
+                            setOtpAssistDetail((error as Error).message || 'Could not start OTP assist.');
+                            await appendPhoneAssistAuditEvent({
+                                type: 'otp_assist_error',
+                                capability: 'otp_assist',
+                                summary: 'OTP assist failed',
+                                detail: (error as Error).message || 'Could not start OTP assist.',
+                                sensitivity: 'moderate',
+                            });
+                        }
+                    },
+                },
+            ],
+        );
+    };
+
+    const handleStopOtpAssist = async () => {
+        await stopNativeOtpAssist();
+        setOtpAssistBusy(false);
+        setOtpAssistStatus('cancelled');
+        setOtpAssistDetail('One-time code helper stopped.');
+    };
+
     const handleRequestApproval = async () => {
         const trimmedUrl = url.trim();
         if (!trimmedUrl) {
@@ -340,6 +470,10 @@ export default function LoginScreen() {
 
         setFormError(null);
         setDeviceApprovalError(null);
+        await stopNativeOtpAssist();
+        setOtpAssistBusy(false);
+        setOtpAssistStatus('idle');
+        setOtpAssistDetail('One-time code helper is off until you start it.');
         setGatewayUrl(trimmedUrl);
         setCompanionSession(undefined);
         setAuthToken(undefined);
@@ -495,6 +629,41 @@ export default function LoginScreen() {
                                         <Pressable onPress={() => setShowToken((current) => !current)}>
                                             <Ionicons name={showToken ? 'eye-off' : 'eye'} size={18} color={colors.textDim} />
                                         </Pressable>
+                                    </View>
+                                    <View style={s.otpAssistCard}>
+                                        <View style={s.otpAssistHeader}>
+                                            <View style={s.otpAssistTitleRow}>
+                                                <Ionicons name="chatbox-ellipses" size={14} color={colors.cyan} />
+                                                <Text style={s.otpAssistTitle}>ONE-TIME CODE HELPER</Text>
+                                            </View>
+                                            <Text style={s.otpAssistStatus}>{formatOtpAssistStatus(otpAssistStatus)}</Text>
+                                        </View>
+                                        <Text style={s.otpAssistText}>{otpAssistDetail}</Text>
+                                        <Text style={s.otpAssistHint}>
+                                            Use this only when you expect a login or pairing code by SMS. The helper waits for one consented message and then stops.
+                                        </Text>
+                                        <View style={s.otpAssistActions}>
+                                            <Pressable
+                                                style={({ pressed }) => [
+                                                    s.otpAssistButton,
+                                                    (otpAssistBusy || approvalPending) && s.otpAssistButtonDisabled,
+                                                    pressed && s.secondaryBtnPressed,
+                                                ]}
+                                                onPress={() => { void handleStartOtpAssist(); }}
+                                                disabled={otpAssistBusy || approvalPending}
+                                            >
+                                                <Text style={s.otpAssistButtonText}>
+                                                    {otpAssistBusy || otpAssistStatus === 'waiting' || otpAssistStatus === 'prompted'
+                                                        ? 'WAITING…'
+                                                        : 'START HELPER'}
+                                                </Text>
+                                            </Pressable>
+                                            {(otpAssistStatus === 'waiting' || otpAssistStatus === 'prompted') ? (
+                                                <Pressable style={s.resetBtn} onPress={() => { void handleStopOtpAssist(); }}>
+                                                    <Text style={s.resetText}>STOP HELPER</Text>
+                                                </Pressable>
+                                            ) : null}
+                                        </View>
                                     </View>
                                 </View>
 
@@ -751,6 +920,28 @@ function isTruthyQueryParam(value: string | undefined): boolean {
     return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
+function formatOtpAssistStatus(status: 'idle' | 'waiting' | 'prompted' | 'matched' | 'timeout' | 'cancelled' | 'error'): string {
+    if (status === 'waiting') {
+        return 'WAITING';
+    }
+    if (status === 'prompted') {
+        return 'PROMPT';
+    }
+    if (status === 'matched') {
+        return 'READY';
+    }
+    if (status === 'timeout') {
+        return 'TIMEOUT';
+    }
+    if (status === 'cancelled') {
+        return 'STOPPED';
+    }
+    if (status === 'error') {
+        return 'ERROR';
+    }
+    return 'OFF';
+}
+
 const s = StyleSheet.create({
     bgImage: { flex: 1, backgroundColor: colors.bgCore },
     safe: { flex: 1 },
@@ -907,6 +1098,51 @@ const s = StyleSheet.create({
         paddingVertical: Platform.OS === 'android' ? spacing.sm : spacing.md,
     },
     input: { flex: 1, color: colors.textPrimary, ...typography.bodyMd, fontFamily: 'monospace' },
+    otpAssistCard: {
+        marginTop: spacing.sm,
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(84, 221, 255, 0.14)',
+        backgroundColor: 'rgba(3, 8, 14, 0.5)',
+        padding: spacing.sm,
+        gap: spacing.xs,
+    },
+    otpAssistHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: spacing.sm,
+    },
+    otpAssistTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.xs,
+        flex: 1,
+    },
+    otpAssistTitle: { ...typography.eyebrow, color: colors.cyan, fontSize: 9 },
+    otpAssistStatus: { ...typography.caption, color: colors.textSecondary, fontFamily: 'monospace' },
+    otpAssistText: { ...typography.bodySm, color: colors.textPrimary, lineHeight: 20 },
+    otpAssistHint: { ...typography.caption, color: colors.textDim, lineHeight: 18 },
+    otpAssistActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        marginTop: spacing.xs,
+    },
+    otpAssistButton: {
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(84, 221, 255, 0.24)',
+        backgroundColor: 'rgba(5, 12, 20, 0.65)',
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+    },
+    otpAssistButtonDisabled: { opacity: 0.55 },
+    otpAssistButtonText: {
+        ...typography.eyebrow,
+        color: colors.cyan,
+        fontSize: 10,
+    },
     hintText: { ...typography.bodySm, color: colors.textDim, marginBottom: spacing.md, lineHeight: 20 },
     errorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
     errorText: { ...typography.bodySm, color: colors.crimson, flex: 1 },

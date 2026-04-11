@@ -8,10 +8,18 @@ import type {
     ChatWebMode,
 } from '../../api/types';
 
+export interface ComposerAttachmentRecord {
+    source: 'picker' | 'shared';
+    uri: string;
+    mimeType?: string;
+    fileName?: string;
+}
+
 export interface QueuedChatMessage {
     id: string;
     content: string;
     image?: ImagePicker.ImagePickerAsset | null;
+    attachment?: ComposerAttachmentRecord | null;
     mode: ChatMode;
     providerId?: string;
     model?: string;

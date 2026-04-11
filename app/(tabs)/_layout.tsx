@@ -102,6 +102,7 @@ export default function TabLayout() {
             <Tabs.Screen name="pulse" options={{ href: null }} />
             <Tabs.Screen name="sessions" options={{ href: null }} />
             <Tabs.Screen name="settings" options={{ href: null }} />
+            <Tabs.Screen name="privacy" options={{ href: null }} />
             <Tabs.Screen name="skills" options={{ href: null }} />
             <Tabs.Screen name="mcp" options={{ href: null }} />
             <Tabs.Screen name="notifications" options={{ href: null }} />
