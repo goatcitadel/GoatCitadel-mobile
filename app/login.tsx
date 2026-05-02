@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -768,7 +769,7 @@ export default function LoginScreen() {
                             </Animated.View>
                         </View>
 
-                        <Text style={s.version}>GoatCitadel Mobile v0.2.1 · Device approval enabled</Text>
+                        <Text style={s.version}>GoatCitadel Mobile v{Constants.expoConfig?.version ?? 'dev'} · Device approval enabled</Text>
                     </ScrollView>
                 </KeyboardAvoidingView>
             </View>

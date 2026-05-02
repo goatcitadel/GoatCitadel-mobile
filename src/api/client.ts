@@ -1085,23 +1085,27 @@ export function fetchChatSessions(): Promise<{ items: ChatSessionRecord[] }> {
     return request('/api/v1/chat/sessions?limit=80');
 }
 
+function chatSessionPath(sessionId: string, suffix = ''): string {
+    return `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}${suffix}`;
+}
+
 export function fetchChatThread(
     sessionId: string,
     options?: { timeoutMs?: number },
 ): Promise<ChatThreadResponse> {
-    return request(`/api/v1/chat/sessions/${sessionId}/thread`, {
+    return request(chatSessionPath(sessionId, '/thread'), {
         timeoutMs: options?.timeoutMs ?? GATEWAY_THREAD_REQUEST_TIMEOUT_MS,
     });
 }
 
 export function fetchChatPrefs(sessionId: string): Promise<ChatSessionPrefsRecord> {
-    return request(`/api/v1/chat/sessions/${sessionId}/prefs`);
+    return request(chatSessionPath(sessionId, '/prefs'));
 }
 
 export function fetchChatSpecialistCandidates(
     sessionId: string,
 ): Promise<{ items: ChatSpecialistCandidateRecord[] }> {
-    return request(`/api/v1/chat/sessions/${sessionId}/specialist-candidates`);
+    return request(chatSessionPath(sessionId, '/specialist-candidates'));
 }
 
 export function sendChatMessage(
@@ -1109,7 +1113,7 @@ export function sendChatMessage(
     body: ChatSendMessageRequest,
     options?: { signal?: AbortSignal; timeoutMs?: number },
 ): Promise<ChatSendMessageResponse> {
-    return request(`/api/v1/chat/sessions/${sessionId}/agent-send`, {
+    return request(chatSessionPath(sessionId, '/agent-send'), {
         method: 'POST',
         body: JSON.stringify(body),
         signal: options?.signal,
@@ -1122,7 +1126,7 @@ export function cancelChatTurn(
     turnId: string,
     cancelledBy?: string,
 ): Promise<ChatCancelTurnResponse> {
-    return request(`/api/v1/chat/sessions/${sessionId}/turns/${turnId}/cancel`, {
+    return request(chatSessionPath(sessionId, `/turns/${encodeURIComponent(turnId)}/cancel`), {
         method: 'POST',
         body: JSON.stringify(cancelledBy ? { cancelledBy } : {}),
         timeoutMs: GATEWAY_REQUEST_TIMEOUT_MS,
@@ -1147,14 +1151,14 @@ export function createChatSession(): Promise<ChatSessionRecord> {
 }
 
 export function deleteChatSession(sessionId: string): Promise<void> {
-    return request(`/api/v1/chat/sessions/${sessionId}`, { method: 'DELETE' });
+    return request(chatSessionPath(sessionId), { method: 'DELETE' });
 }
 
 export function updateChatPrefs(
     sessionId: string,
     prefs: Partial<ChatSessionPrefsRecord>,
 ): Promise<ChatSessionPrefsRecord> {
-    return request(`/api/v1/chat/sessions/${sessionId}/prefs`, {
+    return request(chatSessionPath(sessionId, '/prefs'), {
         method: 'PATCH',
         body: JSON.stringify(prefs),
     });
@@ -1167,7 +1171,7 @@ export function createChatSpecialistCandidate(
         suggestion: ChatSpecialistCandidateSuggestionRecord;
     },
 ): Promise<ChatSpecialistCandidateRecord> {
-    return request(`/api/v1/chat/sessions/${sessionId}/specialist-candidates`, {
+    return request(chatSessionPath(sessionId, '/specialist-candidates'), {
         method: 'POST',
         body: JSON.stringify(body),
     });
@@ -1178,7 +1182,7 @@ export function updateChatSpecialistCandidate(
     candidateId: string,
     body: ChatSpecialistCandidatePatchInput,
 ): Promise<ChatSpecialistCandidateRecord> {
-    return request(`/api/v1/chat/sessions/${sessionId}/specialist-candidates/${candidateId}`, {
+    return request(chatSessionPath(sessionId, `/specialist-candidates/${encodeURIComponent(candidateId)}`), {
         method: 'PATCH',
         body: JSON.stringify(body),
     });
