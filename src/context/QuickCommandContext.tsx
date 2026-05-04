@@ -3,6 +3,7 @@
  * Spotlight-style command palette for instant navigation and actions.
  */
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { MISSION_ROUTES } from '../navigation/missionRoutes';
 
 export interface QuickCommand {
     id: string;
@@ -31,10 +32,11 @@ const QuickCommandContext = createContext<QuickCommandContextType>({
 });
 
 const DEFAULT_COMMANDS: QuickCommand[] = [
-    { id: 'nav-summit', label: 'Go to Summit', icon: 'shield-checkmark', category: 'navigate', route: '/(tabs)', keywords: ['dashboard', 'home', 'summit'] },
+    { id: 'nav-ops', label: 'Go to Ops', icon: 'pulse', category: 'navigate', route: '/(tabs)', keywords: ['dashboard', 'home', 'ops', 'summit'] },
     { id: 'nav-chat', label: 'Open Chat', icon: 'chatbubbles', category: 'navigate', route: '/(tabs)/chat', keywords: ['chat', 'message', 'talk'] },
-    { id: 'nav-approvals', label: 'View Approvals', icon: 'lock-closed', category: 'navigate', route: '/(tabs)/approvals', keywords: ['approvals', 'gatehouse', 'pending'] },
-    { id: 'nav-herd', label: 'Herd HQ', icon: 'people', category: 'navigate', route: '/(tabs)/herd', keywords: ['agents', 'herd', 'team'] },
+    { id: 'nav-mission', label: 'Mission Directory', icon: 'grid', category: 'navigate', route: '/(tabs)/mission', keywords: ['mission', 'library', 'projects', 'parity', 'directory'] },
+    { id: 'nav-approvals', label: 'Ops Approvals', icon: 'lock-closed', category: 'navigate', route: '/(tabs)/approvals', keywords: ['approvals', 'gatehouse', 'pending', 'ops'] },
+    { id: 'nav-agents', label: 'Agents', icon: 'people', category: 'navigate', route: '/(tabs)/herd', keywords: ['agents', 'herd', 'team', 'library'] },
     { id: 'nav-pulse', label: 'Live Pulse', icon: 'pulse', category: 'navigate', route: '/(tabs)/pulse', keywords: ['events', 'live', 'pulse', 'stream'] },
     { id: 'nav-sessions', label: 'Session History', icon: 'list', category: 'navigate', route: '/(tabs)/sessions', keywords: ['sessions', 'history', 'costs'] },
     { id: 'nav-skills', label: 'Skills Library', icon: 'extension-puzzle', category: 'navigate', route: '/(tabs)/skills', keywords: ['skills', 'workflows'] },
@@ -46,6 +48,14 @@ const DEFAULT_COMMANDS: QuickCommand[] = [
     { id: 'nav-logs', label: 'System Logs', icon: 'terminal', category: 'navigate', route: '/(tabs)/logs', keywords: ['logs', 'terminal', 'debug'] },
     { id: 'action-new-chat', label: 'New Chat Session', icon: 'add-circle', category: 'action', keywords: ['new', 'create', 'session'] },
     { id: 'action-refresh', label: 'Refresh All Data', icon: 'refresh', category: 'action', keywords: ['refresh', 'reload', 'update'] },
+    ...MISSION_ROUTES.map((route): QuickCommand => ({
+        id: `mission-${route.id}`,
+        label: `${route.label} (${route.area})`,
+        icon: 'navigate-circle',
+        category: 'navigate',
+        route: route.availableRoute ?? route.mobileRoute,
+        keywords: [route.area, route.section, route.label.toLowerCase(), 'mission', 'parity'],
+    })),
 ];
 
 export function QuickCommandProvider({ children }: { children: React.ReactNode }) {

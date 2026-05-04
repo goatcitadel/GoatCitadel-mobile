@@ -13,10 +13,10 @@ interface Props {
 }
 
 const toneStyles: Record<Tone, { bg: string; border: string; text: string; dot: string }> = {
-    live: { bg: colors.statusLiveBg, border: 'rgba(84, 221, 255, 0.34)', text: '#c9f8ff', dot: colors.cyan },
-    success: { bg: colors.statusSuccessBg, border: 'rgba(110, 245, 165, 0.28)', text: '#d8ffe8', dot: colors.success },
-    warning: { bg: colors.statusWarningBg, border: 'rgba(255, 154, 69, 0.32)', text: '#ffd7b4', dot: colors.ember },
-    critical: { bg: colors.statusCriticalBg, border: 'rgba(255, 86, 120, 0.34)', text: '#ffd7e0', dot: colors.crimson },
+    live: { bg: colors.statusLiveBg, border: 'rgba(144, 196, 232, 0.30)', text: colors.textPrimary, dot: colors.cyan },
+    success: { bg: colors.statusSuccessBg, border: 'rgba(116, 214, 166, 0.28)', text: colors.textPrimary, dot: colors.success },
+    warning: { bg: colors.statusWarningBg, border: 'rgba(229, 196, 111, 0.30)', text: colors.textPrimary, dot: colors.ember },
+    critical: { bg: colors.statusCriticalBg, border: 'rgba(228, 119, 102, 0.32)', text: colors.textPrimary, dot: colors.crimson },
     muted: { bg: colors.statusMutedBg, border: 'rgba(111, 130, 150, 0.18)', text: colors.textMuted, dot: colors.textDim },
 };
 
@@ -35,8 +35,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
         borderRadius: radii.pill,
         borderWidth: 1,
     },

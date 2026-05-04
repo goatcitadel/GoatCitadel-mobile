@@ -125,8 +125,9 @@ export default function ChatSessionListScreen() {
         <View style={styles.safe}>
             <GCHeader
                 eyebrow="Chat Workspace"
-                title="Sessions"
-                subtitle={`${sessions.data?.items.length ?? 0} sessions`}
+                title="Chat"
+                subtitle={`Thread-first conversation surface · ${sessions.data?.items.length ?? 0} sessions`}
+                accentColor={colors.areaChat}
                 right={
                     <GCButton title="+ New" onPress={handleNewSession} variant="primary" size="sm" />
                 }

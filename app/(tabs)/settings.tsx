@@ -5,7 +5,7 @@
  * tool profile, budget mode. Honest about what requires desktop.
  */
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
+import { View, Text, ScrollView, TextInput, StyleSheet, Alert, Pressable, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { GCHeader, GCCard, GCButton, GCStatusChip } from '../../src/components/ui';
@@ -14,12 +14,21 @@ import { colors, spacing, typography, radii } from '../../src/theme/tokens';
 import { useApiData } from '../../src/hooks/useApiData';
 import { useBottomInsetPadding } from '../../src/hooks/useBottomInsetPadding';
 import { useLayout } from '../../src/hooks/useLayout';
-import { fetchRuntimeSettings, patchSettings } from '../../src/api/client';
+import {
+    deleteOpenAICodexOAuthCredential,
+    fetchOpenAICodexOAuthStatus,
+    fetchRuntimeSettings,
+    patchSettings,
+    pollOpenAICodexOAuthDeviceFlow,
+    startOpenAICodexOAuthDeviceFlow,
+    type OpenAICodexDeviceStartResponse,
+} from '../../src/api/client';
 import { setGatewayUrl, getGatewayUrl, setAuthToken, getAuthToken } from '../../src/api/client';
 import { deleteSecureItem, setSecureItem } from '../../src/utils/storage';
 import type { RuntimeSettings } from '../../src/api/types';
 import { useToast } from '../../src/context/ToastContext';
 import { useGatewayAccess } from '../../src/context/GatewayAccessContext';
+import { MISSION_AREAS, getMissionRoutesByArea } from '../../src/navigation/missionRoutes';
 import {
     deriveGatewayShellAccessState,
     formatGatewayAccessDiagnostics,
@@ -39,10 +48,15 @@ export default function SettingsScreen() {
     const [gwUrl, setGwUrl] = useState(getGatewayUrl());
     const [token, setToken] = useState(getAuthToken() || '');
     const [saving, setSaving] = useState(false);
+    const [codexFlow, setCodexFlow] = useState<OpenAICodexDeviceStartResponse | null>(null);
     const appVersion = Constants.expoConfig?.version ?? 'dev';
 
     const settings = useApiData<RuntimeSettings>(
         useCallback(() => fetchRuntimeSettings(), []),
+    );
+    const codexOAuth = useApiData(
+        useCallback(() => fetchOpenAICodexOAuthStatus(), []),
+        { enabled: Boolean(gwUrl.trim()) },
     );
 
     const handleGatewayUrlChange = useCallback((nextUrl: string) => {
@@ -157,8 +171,86 @@ export default function SettingsScreen() {
         }
     };
 
+    const startCodexOAuth = useCallback(async () => {
+        setSaving(true);
+        try {
+            const flow = await startOpenAICodexOAuthDeviceFlow();
+            setCodexFlow(flow);
+            await Linking.openURL(flow.verificationUrl);
+            showToast({
+                message: flow.userCode
+                    ? `Codex OAuth started. Use code ${flow.userCode}.`
+                    : 'Codex OAuth started in your browser.',
+                type: 'info',
+            });
+        } catch (error) {
+            Alert.alert('Codex OAuth', (error as Error).message || 'Could not start the OAuth device flow.');
+        } finally {
+            setSaving(false);
+        }
+    }, [showToast]);
+
+    const pollCodexOAuth = useCallback(async () => {
+        if (!codexFlow) {
+            return;
+        }
+        setSaving(true);
+        try {
+            const result = await pollOpenAICodexOAuthDeviceFlow(codexFlow.flowId);
+            if (result.status === 'connected') {
+                setCodexFlow(null);
+                await Promise.allSettled([codexOAuth.refresh(), settings.refresh()]);
+                showToast({ message: 'OpenAI Codex OAuth connected.', type: 'success' });
+                return;
+            }
+            if (result.status === 'expired' || result.status === 'failed') {
+                setCodexFlow(null);
+                showToast({ message: result.error || `Codex OAuth ${result.status}.`, type: 'warning' });
+                return;
+            }
+            showToast({ message: 'Codex OAuth is still pending.', type: 'info' });
+        } catch (error) {
+            Alert.alert('Codex OAuth', (error as Error).message || 'Could not poll the OAuth flow.');
+        } finally {
+            setSaving(false);
+        }
+    }, [codexFlow, codexOAuth, settings, showToast]);
+
+    const disconnectCodexOAuth = useCallback(async () => {
+        setSaving(true);
+        try {
+            await deleteOpenAICodexOAuthCredential();
+            setCodexFlow(null);
+            await Promise.allSettled([codexOAuth.refresh(), settings.refresh()]);
+            showToast({ message: 'OpenAI Codex OAuth disconnected.', type: 'info' });
+        } catch (error) {
+            Alert.alert('Codex OAuth', (error as Error).message || 'Could not disconnect Codex OAuth.');
+        } finally {
+            setSaving(false);
+        }
+    }, [codexOAuth, settings, showToast]);
+
     const settingsContent = (
         <View style={s.formColumn}>
+            <GCCard style={s.section} accent accentColor={MISSION_AREAS.settings.color}>
+                <Text style={s.sectionTitle}>SETTINGS SECTIONS</Text>
+                <Text style={s.sectionDesc}>
+                    Mobile mirrors the Mission Control Next settings rail. Direct controls stay here; summary lanes open
+                    through the Mission Directory when desktop owns deeper editors.
+                </Text>
+                <View style={s.routeGrid}>
+                    {getMissionRoutesByArea('settings').map((route) => (
+                        <Pressable
+                            key={route.id}
+                            style={s.routePill}
+                            onPress={() => router.push((route.availableRoute ?? route.mobileRoute) as any)}
+                        >
+                            <Text style={s.routePillText}>{route.label}</Text>
+                        </Pressable>
+                    ))}
+                </View>
+            </GCCard>
+
             {/* Gateway Connection */}
             <GCCard style={s.section}>
                 <Text style={s.sectionTitle}>GATEWAY URL</Text>
@@ -259,8 +351,8 @@ export default function SettingsScreen() {
                 <GCCard style={s.section}>
                     <Text style={s.sectionTitle}>ALL PROVIDERS</Text>
                     <Text style={s.sectionDesc}>
-                        Tap a provider to make it active. API keys and advanced provider
-                        config require Mission Control on desktop.
+                        Tap a provider to make it active. Mobile now mirrors the gateway route contract:
+                        API style, auth mode, secret source, and OAuth state are shown before you send.
                     </Text>
                     {settings.data.llm.providers.map((p) => (
                         <Pressable
@@ -274,12 +366,71 @@ export default function SettingsScreen() {
                             <View style={{ flex: 1 }}>
                                 <Text style={s.providerRowLabel}>{p.label}</Text>
                                 <Text style={s.providerRowModel}>{p.defaultModel}</Text>
+                                <Text style={s.providerRowMeta}>
+                                    {p.apiStyle} · {p.authMode || 'api-key'} · {p.apiKeySource}
+                                </Text>
+                                {p.oauthStatus?.connected ? (
+                                    <Text style={s.providerRowMeta}>
+                                        OAuth {p.oauthStatus.accountLabel ? `· ${p.oauthStatus.accountLabel}` : 'connected'}
+                                    </Text>
+                                ) : null}
                             </View>
-                            <GCStatusChip tone={p.hasApiKey ? 'success' : 'warning'}>
-                                {p.providerId === settings.data!.llm.activeProviderId ? 'ACTIVE' : p.hasApiKey ? 'KEY SET' : 'NO KEY'}
+                            <GCStatusChip tone={(p.hasApiKey || p.oauthStatus?.connected) ? 'success' : 'warning'}>
+                                {p.providerId === settings.data!.llm.activeProviderId
+                                    ? 'ACTIVE'
+                                    : p.oauthStatus?.connected
+                                        ? 'OAUTH'
+                                        : p.hasApiKey ? 'KEY SET' : 'NO KEY'}
                             </GCStatusChip>
                         </Pressable>
                     ))}
+                </GCCard>
+            ) : null}
+
+            {settings.data ? (
+                <GCCard style={s.section}>
+                    <Text style={s.sectionTitle}>OPENAI CODEX OAUTH</Text>
+                    <Text style={s.sectionDesc}>
+                        Codex OAuth is managed by the gateway. Mobile can start the device flow and
+                        poll the result, while the credential stays on the gateway.
+                    </Text>
+                    <View style={s.infoRow}>
+                        <Text style={s.infoLabel}>Status</Text>
+                        <GCStatusChip tone={codexOAuth.data?.connected ? 'success' : 'warning'}>
+                            {codexOAuth.data?.connected ? 'CONNECTED' : codexOAuth.error ? 'UNAVAILABLE' : 'NOT CONNECTED'}
+                        </GCStatusChip>
+                    </View>
+                    {codexOAuth.data?.accountLabel ? (
+                        <View style={s.infoRow}>
+                            <Text style={s.infoLabel}>Account</Text>
+                            <Text style={s.infoValue}>{codexOAuth.data.accountLabel}</Text>
+                        </View>
+                    ) : null}
+                    {codexFlow ? (
+                        <View style={s.oauthFlowCard}>
+                            <Text style={s.providerRowLabel}>Device flow pending</Text>
+                            <Text style={s.providerRowModel}>{codexFlow.verificationUrl}</Text>
+                            {codexFlow.userCode ? (
+                                <Text style={s.oauthCode}>{codexFlow.userCode}</Text>
+                            ) : null}
+                        </View>
+                    ) : null}
+                    <View style={s.actionRow}>
+                        <GCButton title="Start OAuth" onPress={startCodexOAuth} variant="secondary" size="sm" />
+                        {codexFlow ? (
+                            <GCButton title="Poll" onPress={pollCodexOAuth} variant="primary" size="sm" />
+                        ) : null}
+                        {codexOAuth.data?.connected ? (
+                            <GCButton title="Disconnect" onPress={disconnectCodexOAuth} variant="danger" size="sm" />
+                        ) : null}
+                    </View>
+                </GCCard>
+            ) : null}
+
+            {settings.data ? (
+                <GCCard style={s.section}>
+                    <Text style={s.sectionTitle}>RUNTIME POSTURE</Text>
+                    <RuntimePostureGrid settings={settings.data} />
                 </GCCard>
             ) : null}
 
@@ -344,6 +495,8 @@ export default function SettingsScreen() {
     return (
         <View style={s.safe} >
             <GCHeader eyebrow="Configuration" title="Settings"
+                subtitle="Providers, access, runtime, workspaces, integrations, channels, tools, and add-ons."
+                accentColor={colors.areaSettings}
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />} />
             <AdaptiveContainer style={s.adaptiveRoot}>
                 {layout.dualPane ? (
@@ -368,6 +521,32 @@ export default function SettingsScreen() {
     );
 }
 
+function RuntimePostureGrid({ settings }: { settings: RuntimeSettings }) {
+    const featureCount = Object.values(settings.features ?? {}).filter(Boolean).length;
+    const firecrawl = settings.web?.firecrawl;
+    return (
+        <View style={s.postureGrid}>
+            <PostureTile label="Profile" value={settings.deploymentProfile ?? settings.environment ?? 'unknown'} />
+            <PostureTile label="Read access" value={settings.readAccessMode ?? 'roots_only'} />
+            <PostureTile label="Memory QMD" value={settings.memory?.qmd.enabled ? 'enabled' : 'off'} />
+            <PostureTile label="Firecrawl" value={firecrawl?.enabled ? firecrawl.defaultReadBackend : 'off'} />
+            <PostureTile label="llama.cpp" value={settings.llamaCpp?.status?.processState ?? (settings.llamaCpp?.enabled ? 'enabled' : 'off')} />
+            <PostureTile label="NPU" value={settings.npu?.status?.processState ?? (settings.npu?.enabled ? 'enabled' : 'off')} />
+            <PostureTile label="Mesh" value={settings.mesh?.enabled ? settings.mesh.mode : 'off'} />
+            <PostureTile label="Features" value={`${featureCount} enabled`} />
+        </View>
+    );
+}
+
+function PostureTile({ label, value }: { label: string; value: string }) {
+    return (
+        <View style={s.postureTile}>
+            <Text style={s.postureLabel}>{label}</Text>
+            <Text style={s.postureValue} numberOfLines={2}>{value}</Text>
+        </View>
+    );
+}
+
 const s = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bgCore },
     adaptiveRoot: { flex: 1 },
@@ -377,6 +556,17 @@ const s = StyleSheet.create({
     section: { marginBottom: spacing.lg },
     sectionTitle: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.md },
     sectionDesc: { ...typography.caption, color: colors.textDim, marginBottom: spacing.md },
+    routeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    routePill: {
+        minHeight: 32,
+        borderWidth: 1,
+        borderColor: colors.borderDefault,
+        borderRadius: radii.sm,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        backgroundColor: colors.bgPanelElevated,
+    },
+    routePillText: { ...typography.caption, color: colors.textPrimary, fontWeight: '700' },
     inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
     input: {
         flex: 1, backgroundColor: colors.bgInput, borderRadius: radii.sm, borderWidth: 1,
@@ -404,6 +594,39 @@ const s = StyleSheet.create({
     },
     providerRowLabel: { ...typography.bodySm, color: colors.textPrimary },
     providerRowModel: { ...typography.caption, color: colors.textDim, fontFamily: 'monospace' },
+    providerRowMeta: { ...typography.caption, color: colors.textMuted, lineHeight: 17 },
+    oauthFlowCard: {
+        backgroundColor: colors.bgInset,
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+        padding: spacing.sm,
+        gap: spacing.xs,
+        marginTop: spacing.sm,
+    },
+    oauthCode: {
+        ...typography.displaySm,
+        color: colors.cyan,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+    },
+    postureGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing.sm,
+    },
+    postureTile: {
+        width: '48%',
+        minWidth: 132,
+        backgroundColor: colors.bgInset,
+        borderRadius: radii.sm,
+        borderWidth: 1,
+        borderColor: colors.borderQuiet,
+        padding: spacing.sm,
+        gap: spacing.xs,
+    },
+    postureLabel: { ...typography.caption, color: colors.textDim, textTransform: 'uppercase' },
+    postureValue: { ...typography.bodySm, color: colors.textPrimary, fontWeight: '600' },
     infoRow: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
         marginBottom: spacing.sm,

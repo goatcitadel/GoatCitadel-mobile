@@ -1,6 +1,6 @@
 {
   "name": "goatcitadel-mobile",
-  "version": "0.1.3",
+  "version": "0.1.8",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -19,13 +19,13 @@
     "lint": "tsc --noEmit",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "test:adaptive": "jest --runInBand tests/useLayout.contract.test.ts tests/useBottomInsetPadding.test.ts tests/tab-shell.test.tsx tests/summit-layout.test.tsx tests/chat-sessions-screen.test.tsx tests/approvals-screen.test.tsx"
+    "test:adaptive": "jest --runInBand tests/useLayout.contract.test.ts tests/useBottomInsetPadding.test.ts tests/tab-shell.test.tsx tests/mission-routes.test.ts tests/summit-layout.test.tsx tests/chat-sessions-screen.test.tsx tests/approvals-screen.test.tsx"
   },
   "dependencies": {
     "@expo-google-fonts/rajdhani": "^0.4.1",
     "@expo/metro-runtime": "^55.0.6",
     "@expo/vector-icons": "*",
-    "@goatcitadel/contracts": "0.6.0-beta.2",
+    "@goatcitadel/contracts": "1.0.0",
     "@gorhom/bottom-sheet": "*",
     "@shopify/flash-list": "2.0.2",
     "buffer": "^6.0.3",

@@ -132,9 +132,10 @@ export default function CoworkScreen() {
     return (
         <View style={styles.safe}>
             <GCHeader
-                eyebrow="Sessions"
-                title="Mission Sessions"
+                eyebrow="Orchestration"
+                title="Cowork"
                 subtitle={sessions.data ? `${missionSessions.length} mission · ${allSessions.length} total` : 'Loading…'}
+                accentColor={colors.areaCowork}
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
 

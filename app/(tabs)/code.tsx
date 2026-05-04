@@ -124,9 +124,10 @@ export default function CodeScreen() {
     return (
         <View style={styles.safe}>
             <GCHeader
-                eyebrow="Sessions"
-                title="Code Sessions"
+                eyebrow="Implementation"
+                title="Code"
                 subtitle={sessions.data ? `${projectSessions.length} with projects · ${items.length} total` : 'Loading…'}
+                accentColor={colors.areaCode}
                 right={<GCButton title="Back" onPress={() => router.back()} variant="ghost" size="sm" />}
             />
 

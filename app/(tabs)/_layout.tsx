@@ -50,15 +50,6 @@ export default function TabLayout() {
             }}
         >
             <Tabs.Screen
-                name="index"
-                options={{
-                    title: 'Summit',
-                    tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="shield-checkmark" size={size} color={color} />
-                    ),
-                }}
-            />
-            <Tabs.Screen
                 name="chat"
                 options={{
                     title: 'Chat',
@@ -68,40 +59,50 @@ export default function TabLayout() {
                 }}
             />
             <Tabs.Screen
-                name="approvals"
+                name="cowork"
                 options={{
-                    title: 'Gatehouse',
+                    title: 'Cowork',
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="lock-closed" size={size} color={color} />
+                        <Ionicons name="git-network" size={size} color={color} />
                     ),
                 }}
             />
             <Tabs.Screen
-                name="herd"
+                name="code"
                 options={{
-                    title: 'Herd',
+                    title: 'Code',
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="people" size={size} color={color} />
+                        <Ionicons name="code-slash" size={size} color={color} />
                     ),
                 }}
             />
             <Tabs.Screen
-                name="more"
+                name="index"
                 options={{
-                    title: 'More',
+                    title: 'Ops',
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="grid" size={size} color={color} />
+                        <Ionicons name="pulse" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="settings"
+                options={{
+                    title: 'Settings',
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="options" size={size} color={color} />
                     ),
                 }}
             />
             {/* Hidden tabs — accessible from More menu only */}
-            <Tabs.Screen name="cowork" options={{ href: null }} />
-            <Tabs.Screen name="code" options={{ href: null }} />
+            <Tabs.Screen name="mission" options={{ href: null }} />
+            <Tabs.Screen name="approvals" options={{ href: null }} />
+            <Tabs.Screen name="herd" options={{ href: null }} />
+            <Tabs.Screen name="more" options={{ href: null }} />
             <Tabs.Screen name="canvas" options={{ href: null }} />
             <Tabs.Screen name="parity" options={{ href: null }} />
             <Tabs.Screen name="pulse" options={{ href: null }} />
             <Tabs.Screen name="sessions" options={{ href: null }} />
-            <Tabs.Screen name="settings" options={{ href: null }} />
             <Tabs.Screen name="privacy" options={{ href: null }} />
             <Tabs.Screen name="skills" options={{ href: null }} />
             <Tabs.Screen name="mcp" options={{ href: null }} />

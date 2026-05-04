@@ -1,5 +1,5 @@
 /**
- * GoatCitadel Mobile — Summit / Dashboard Screen
+ * GoatCitadel Mobile — Ops / Dashboard Screen
  * Premium animated dashboard with skeleton loading and entrance effects.
  */
 import React, { useCallback, memo } from 'react';
@@ -28,7 +28,7 @@ import { useQuickCommand } from '../../src/context/QuickCommandContext';
 import type { DashboardState, SystemVitals } from '../../src/api/types';
 import { getRealtimeEventMeta } from '../../src/utils/realtimeEvents';
 
-export default function SummitScreen() {
+export default function OpsScreen() {
     const router = useRouter();
     const bottomPad = useBottomInsetPadding(32);
     const layout = useLayout();
@@ -158,8 +158,10 @@ export default function SummitScreen() {
                         onPress={() => router.push('/(tabs)/chat')} />
                     <ActionButton icon="lock-closed" label="Approvals"
                         onPress={() => router.push('/(tabs)/approvals')} />
-                    <ActionButton icon="people" label="Herd HQ"
+                    <ActionButton icon="people" label="Agents"
                         onPress={() => router.push('/(tabs)/herd')} />
+                    <ActionButton icon="grid" label="Mission Directory"
+                        onPress={() => router.push('/(tabs)/mission' as any)} />
                     <ActionButton icon="search" label="Command"
                         onPress={toggleCommand} />
                     <ActionButton icon="wallet" label="Cost Tracker"
@@ -277,9 +279,10 @@ export default function SummitScreen() {
                 }
             >
                 <GCHeader
-                    eyebrow="Mission Control"
-                    title="Command Deck"
-                    subtitle="Operator-first triage — health, workload, and what needs attention."
+                    eyebrow="Operations"
+                    title="Ops"
+                    subtitle="Activity, approvals, spend, runtime posture, and Mission Control parity."
+                    accentColor={colors.areaOps}
                     right={
                         <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
                             <Pressable onPress={toggleCommand} style={styles.headerBtn}>

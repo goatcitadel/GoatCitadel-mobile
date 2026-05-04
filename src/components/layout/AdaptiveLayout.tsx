@@ -147,8 +147,8 @@ const styles = StyleSheet.create({
         backgroundColor: colors.bgCard,
         borderRadius: radii.md,
         borderWidth: 1,
-        borderColor: colors.borderCyan,
-        padding: spacing.lg,
+        borderColor: colors.borderDefault,
+        padding: spacing.md,
     },
     masterDetailRoot: {
         flexDirection: 'row',

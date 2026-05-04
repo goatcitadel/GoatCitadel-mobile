@@ -4,6 +4,7 @@
 import { NativeModules, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as ExpoCrypto from 'expo-crypto';
+import * as Network from 'expo-network';
 import nacl from 'tweetnacl';
 import { Buffer } from 'buffer';
 import type {
@@ -20,10 +21,17 @@ import type {
     ChatCancelTurnResponse,
     ChatMessageRecord,
     ChatSessionPrefsRecord,
+    ChatUserInputPromptAnswerRequest,
+    ChatUserInputPromptAnswerResponse,
     ApprovalRequest,
     AgentProfileRecord,
+    LlmModelPreviewRequest,
+    LlmModelPreviewResponse,
     LlmModelRecord,
+    LlmProviderConfig,
     RuntimeSettings,
+    RoutingPreflightRequest,
+    RoutingPreflightResult,
     SkillListItem,
     SkillRuntimeState,
     McpServerRecord,
@@ -41,6 +49,15 @@ import type {
     CompanionSessionRefreshResponse,
     FollowOnParityReport,
     FollowOnProofLaneArtifactRecord,
+    WorkspaceRecord,
+    ChatProjectRecord,
+    MemoryFileRecord,
+    FileListRecord,
+    MemoryItemRecord,
+    GeneratedArtifactRecord,
+    ToolCatalogEntry,
+    AddonInstalledRecord,
+    IntegrationConnectionRecord,
 } from './types';
 import { deleteSecureItem, getSecureItem, setSecureItem } from '../utils/storage';
 
@@ -53,8 +70,11 @@ const STORE_KEY_URL = 'gc_gateway_url';
 const STORE_KEY_TOKEN = 'gc_auth_token';
 const STORE_KEY_COMPANION_SESSION = 'gc_companion_session';
 const GATEWAY_HEALTH_PATH = '/health';
-const GATEWAY_AUTH_PROBE_PATH = '/api/v1/sessions?limit=1';
+const GATEWAY_OPERATOR_AUTH_PROBE_PATH = '/api/v1/chat/sessions?limit=1';
+const GATEWAY_COMPANION_AUTH_PROBE_PATH = '/api/v1/auth/companion/session';
 const GATEWAY_PROBE_TIMEOUT_MS = 5000;
+const GATEWAY_DISCOVERY_TIMEOUT_MS = 850;
+const GATEWAY_DISCOVERY_CONCURRENCY = 32;
 const GATEWAY_REQUEST_TIMEOUT_MS = 20000;
 const GATEWAY_CHAT_REQUEST_TIMEOUT_MS = 180000;
 const GATEWAY_THREAD_REQUEST_TIMEOUT_MS = 20000;
@@ -66,6 +86,16 @@ export interface PersistedCompanionSession extends CompanionSessionExchangeRespo
     signingPrivateKeyBase64: string;
     clientName?: string;
     appVersion?: string;
+}
+
+export interface GatewayDiscoveryResult {
+    url: string;
+    host: string;
+    port: number;
+    statusCode: number;
+    source: 'configured' | 'emulator' | 'lan';
+    confidence: 'high' | 'medium';
+    detail: string;
 }
 
 type AndroidGatewayHttpResult = {
@@ -774,6 +804,216 @@ function formatGatewayChecks(checks: GatewayConnectionCheck[]): string {
         .join('\n');
 }
 
+function normalizeDiscoveryBaseUrl(value: string | undefined): string | undefined {
+    const trimmed = value?.trim().replace(/\/+$/, '');
+    if (!trimmed) {
+        return undefined;
+    }
+    try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return undefined;
+        }
+        return `${parsed.protocol}//${parsed.host}`;
+    } catch {
+        return undefined;
+    }
+}
+
+function getDiscoveryUrlParts(baseUrl: string): { host: string; port: number } | undefined {
+    try {
+        const parsed = new URL(baseUrl);
+        return {
+            host: parsed.hostname,
+            port: parsed.port ? Number.parseInt(parsed.port, 10) : parsed.protocol === 'https:' ? 443 : 80,
+        };
+    } catch {
+        return undefined;
+    }
+}
+
+function isPrivateIpv4(value: string): boolean {
+    const parts = value.split('.').map((part) => Number.parseInt(part, 10));
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+        return false;
+    }
+    return parts[0] === 10
+        || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+        || (parts[0] === 192 && parts[1] === 168);
+}
+
+function buildGatewayDiscoveryCandidates(input: {
+    deviceIp?: string;
+    configuredUrl?: string;
+    ports?: number[];
+}): Array<{ url: string; host: string; port: number; source: GatewayDiscoveryResult['source'] }> {
+    const ports = Array.from(new Set([
+        ...(input.ports?.filter((port) => Number.isInteger(port) && port > 0 && port <= 65535) ?? []),
+        8787,
+    ]));
+    const candidates = new Map<string, { url: string; host: string; port: number; source: GatewayDiscoveryResult['source'] }>();
+    const addCandidate = (host: string, port: number, source: GatewayDiscoveryResult['source']) => {
+        const url = `http://${host}:${port}`;
+        if (!candidates.has(url)) {
+            candidates.set(url, { url, host, port, source });
+        }
+    };
+
+    const configuredBaseUrl = normalizeDiscoveryBaseUrl(input.configuredUrl);
+    const configuredParts = configuredBaseUrl ? getDiscoveryUrlParts(configuredBaseUrl) : undefined;
+    if (configuredBaseUrl && configuredParts) {
+        candidates.set(configuredBaseUrl, {
+            url: configuredBaseUrl,
+            host: configuredParts.host,
+            port: configuredParts.port,
+            source: 'configured',
+        });
+    }
+
+    if (Platform.OS === 'android') {
+        ports.forEach((port) => addCandidate('10.0.2.2', port, 'emulator'));
+    }
+
+    if (input.deviceIp && isPrivateIpv4(input.deviceIp)) {
+        const octets = input.deviceIp.split('.');
+        const prefix = `${octets[0]}.${octets[1]}.${octets[2]}`;
+        const ownHost = Number.parseInt(octets[3], 10);
+        const priorityHosts = [1, 2, 10, 20, 50, 100, 101, 200, ownHost - 1, ownHost + 1]
+            .filter((host) => host > 0 && host < 255);
+        const hosts = Array.from(new Set([
+            ...priorityHosts,
+            ...Array.from({ length: 254 }, (_, index) => index + 1),
+        ]));
+        hosts.forEach((hostNumber) => {
+            if (hostNumber === ownHost) {
+                return;
+            }
+            ports.forEach((port) => addCandidate(`${prefix}.${hostNumber}`, port, 'lan'));
+        });
+    }
+
+    return Array.from(candidates.values());
+}
+
+function bodyLooksLikeGatewayHealth(body: string | undefined): boolean {
+    const normalized = body?.trim().toLowerCase() ?? '';
+    if (!normalized) {
+        return false;
+    }
+    return normalized.includes('goatcitadel')
+        || normalized.includes('gateway')
+        || normalized.includes('"status"')
+        || normalized.includes('"ok"')
+        || normalized.includes('healthy');
+}
+
+async function probeGatewayDiscoveryCandidate(
+    candidate: { url: string; host: string; port: number; source: GatewayDiscoveryResult['source'] },
+    timeoutMs: number,
+    signal?: AbortSignal,
+): Promise<GatewayDiscoveryResult | undefined> {
+    const targetUrl = `${candidate.url}${GATEWAY_HEALTH_PATH}`;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const nativeResult = await androidNativeRequest('GET', targetUrl, {}, null, timeoutMs, signal);
+        if (nativeResult) {
+            const status = nativeResult.status ?? -1;
+            if (status >= 200 && status < 300) {
+                const detail = nativeResult.body?.trim().slice(0, 180) || 'Gateway /health responded.';
+                return {
+                    ...candidate,
+                    statusCode: status,
+                    confidence: bodyLooksLikeGatewayHealth(nativeResult.body) ? 'high' : 'medium',
+                    detail,
+                };
+            }
+            return undefined;
+        }
+
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const response = await fetch(targetUrl, {
+            method: 'GET',
+            signal: signal ?? controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            return undefined;
+        }
+        const text = await response.text();
+        return {
+            ...candidate,
+            statusCode: response.status,
+            confidence: bodyLooksLikeGatewayHealth(text) ? 'high' : 'medium',
+            detail: text.trim().slice(0, 180) || 'Gateway /health responded.',
+        };
+    } catch {
+        clearTimeout(timeoutId);
+        return undefined;
+    }
+}
+
+export async function discoverLocalGateways(options?: {
+    configuredUrl?: string;
+    ports?: number[];
+    timeoutMs?: number;
+    signal?: AbortSignal;
+}): Promise<GatewayDiscoveryResult[]> {
+    const timeoutMs = options?.timeoutMs ?? GATEWAY_DISCOVERY_TIMEOUT_MS;
+    let networkState: Network.NetworkState | undefined;
+    let deviceIp: string | undefined;
+    try {
+        networkState = await Network.getNetworkStateAsync();
+        if (networkState.isConnected === false) {
+            return [];
+        }
+        deviceIp = await Network.getIpAddressAsync();
+    } catch {
+        deviceIp = undefined;
+    }
+
+    const candidates = buildGatewayDiscoveryCandidates({
+        deviceIp,
+        configuredUrl: options?.configuredUrl ?? gatewayBaseUrl,
+        ports: options?.ports,
+    });
+    const results: GatewayDiscoveryResult[] = [];
+    let nextIndex = 0;
+
+    const worker = async () => {
+        while (!options?.signal?.aborted && nextIndex < candidates.length) {
+            const candidate = candidates[nextIndex];
+            nextIndex += 1;
+            const result = await probeGatewayDiscoveryCandidate(candidate, timeoutMs, options?.signal);
+            if (result && !results.some((existing) => existing.url === result.url)) {
+                results.push(result);
+            }
+        }
+    };
+
+    await Promise.all(
+        Array.from(
+            { length: Math.min(GATEWAY_DISCOVERY_CONCURRENCY, candidates.length) },
+            () => worker(),
+        ),
+    );
+
+    return results.sort((left, right) => {
+        if (left.confidence !== right.confidence) {
+            return left.confidence === 'high' ? -1 : 1;
+        }
+        if (left.source !== right.source) {
+            const order: Record<GatewayDiscoveryResult['source'], number> = {
+                configured: 0,
+                emulator: 1,
+                lan: 2,
+            };
+            return order[left.source] - order[right.source];
+        }
+        return left.url.localeCompare(right.url);
+    });
+}
+
 async function runGatewayProbe(
     path: string,
     label: string,
@@ -1108,6 +1348,17 @@ export function fetchChatSpecialistCandidates(
     return request(chatSessionPath(sessionId, '/specialist-candidates'));
 }
 
+export function preflightChatRoute(
+    sessionId: string,
+    body: RoutingPreflightRequest,
+): Promise<RoutingPreflightResult> {
+    return request(chatSessionPath(sessionId, '/route-preflight'), {
+        method: 'POST',
+        body: JSON.stringify(body),
+        timeoutMs: GATEWAY_THREAD_REQUEST_TIMEOUT_MS,
+    });
+}
+
 export function sendChatMessage(
     sessionId: string,
     body: ChatSendMessageRequest,
@@ -1118,6 +1369,163 @@ export function sendChatMessage(
         body: JSON.stringify(body),
         signal: options?.signal,
         timeoutMs: options?.timeoutMs ?? GATEWAY_CHAT_REQUEST_TIMEOUT_MS,
+    });
+}
+
+export function selectChatBranchTurn(
+    sessionId: string,
+    turnId: string,
+): Promise<ChatThreadResponse> {
+    return request(chatSessionPath(sessionId, `/turns/${encodeURIComponent(turnId)}/select`), {
+        method: 'POST',
+        body: '{}',
+    });
+}
+
+export function retryChatTurn(
+    sessionId: string,
+    turnId: string,
+    body: Partial<ChatSendMessageRequest> & { routeDecision: NonNullable<ChatSendMessageRequest['routeDecision']> },
+): Promise<ChatSendMessageResponse> {
+    return request(chatSessionPath(sessionId, `/turns/${encodeURIComponent(turnId)}/retry`), {
+        method: 'POST',
+        body: JSON.stringify(body),
+        timeoutMs: GATEWAY_CHAT_REQUEST_TIMEOUT_MS,
+    });
+}
+
+export async function retryChatTurnWithRoutePreflight(
+    sessionId: string,
+    turnId: string,
+    body: Partial<ChatSendMessageRequest> = {},
+): Promise<ChatSendMessageResponse> {
+    const preflight = await preflightChatRoute(sessionId, {
+        action: 'retry',
+        turnId,
+        providerId: body.providerId,
+        model: body.model,
+        mode: body.mode,
+        webMode: body.webMode,
+        thinkingLevel: body.thinkingLevel,
+        prefsOverride: body.prefsOverride,
+    });
+    if (preflight.blockedReason) {
+        throw new Error(preflight.blockedReason);
+    }
+    return retryChatTurn(sessionId, turnId, {
+        ...body,
+        providerId: preflight.effectiveProviderId,
+        model: preflight.effectiveModel,
+        routeDecision: preflight.decision,
+    });
+}
+
+export function editChatTurn(
+    sessionId: string,
+    turnId: string,
+    body: ChatSendMessageRequest & { routeDecision: NonNullable<ChatSendMessageRequest['routeDecision']> },
+): Promise<ChatSendMessageResponse> {
+    return request(chatSessionPath(sessionId, `/turns/${encodeURIComponent(turnId)}/edit`), {
+        method: 'POST',
+        body: JSON.stringify(body),
+        timeoutMs: GATEWAY_CHAT_REQUEST_TIMEOUT_MS,
+    });
+}
+
+export async function editChatTurnWithRoutePreflight(
+    sessionId: string,
+    turnId: string,
+    body: ChatSendMessageRequest,
+): Promise<ChatSendMessageResponse> {
+    const preflight = await preflightChatRoute(sessionId, {
+        action: 'edit',
+        turnId,
+        providerId: body.providerId,
+        model: body.model,
+        mode: body.mode,
+        webMode: body.webMode,
+        thinkingLevel: body.thinkingLevel,
+        prefsOverride: body.prefsOverride,
+    });
+    if (preflight.blockedReason) {
+        throw new Error(preflight.blockedReason);
+    }
+    return editChatTurn(sessionId, turnId, {
+        ...body,
+        providerId: preflight.effectiveProviderId,
+        model: preflight.effectiveModel,
+        routeDecision: preflight.decision,
+    });
+}
+
+export function answerChatUserInputPrompt(
+    sessionId: string,
+    turnId: string,
+    promptId: string,
+    body: ChatUserInputPromptAnswerRequest,
+): Promise<ChatUserInputPromptAnswerResponse> {
+    return request(
+        chatSessionPath(sessionId, `/turns/${encodeURIComponent(turnId)}/user-input/${encodeURIComponent(promptId)}/respond`),
+        {
+            method: 'POST',
+            body: JSON.stringify(body),
+            timeoutMs: GATEWAY_CHAT_REQUEST_TIMEOUT_MS,
+        },
+    );
+}
+
+export interface ChatPendingApprovalRecord {
+    approvalId: string;
+    kind?: string;
+    toolName?: string;
+    reason?: string;
+    riskLevel?: 'safe' | 'caution' | 'danger' | 'nuclear';
+    expiresAt?: string;
+    createdAt: string;
+    stale: boolean;
+    staleReason?: string;
+    details?: Record<string, unknown>;
+}
+
+export function fetchChatPendingApprovals(sessionId: string): Promise<{
+    items: ChatPendingApprovalRecord[];
+    activeApprovalId: string | null;
+    remainingCount: number;
+}> {
+    return request(`/api/v1/chat/tools/approvals?sessionId=${encodeURIComponent(sessionId)}`);
+}
+
+export function approveChatTool(
+    sessionId: string,
+    approvalId: string,
+    options?: { allowScope?: 'once' | 'session' | 'workspace' },
+): Promise<{
+    ok: boolean;
+    approvalId: string;
+    allowScope?: 'once' | 'session' | 'workspace';
+    resumed?: boolean;
+    resumedTurnId?: string;
+    resumedRunId?: string;
+}> {
+    return request('/api/v1/chat/tools/approve', {
+        method: 'POST',
+        body: JSON.stringify({
+            sessionId,
+            approvalId,
+            ...(options?.allowScope ? { allowScope: options.allowScope } : {}),
+        }),
+        timeoutMs: GATEWAY_CHAT_REQUEST_TIMEOUT_MS,
+    });
+}
+
+export function denyChatTool(
+    sessionId: string,
+    approvalId: string,
+): Promise<{ ok: boolean; approvalId: string }> {
+    return request('/api/v1/chat/tools/deny', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId, approvalId }),
+        timeoutMs: GATEWAY_CHAT_REQUEST_TIMEOUT_MS,
     });
 }
 
@@ -1218,11 +1626,120 @@ export function fetchRuntimeSettings(): Promise<RuntimeSettings> {
     return request('/api/v1/settings');
 }
 
-export function fetchLlmModels(providerId?: string): Promise<{ items: LlmModelRecord[] }> {
+export function fetchLlmConfig(): Promise<RuntimeSettings['llm'] & { providerConfigs?: LlmProviderConfig[] }> {
+    return request('/api/v1/llm/config');
+}
+
+export function fetchLlmProviders(): Promise<{ items: RuntimeSettings['llm']['providers'] }> {
+    return request('/api/v1/llm/providers');
+}
+
+export function fetchLlmModels(providerId?: string): Promise<{
+    items: LlmModelRecord[];
+    source?: 'live' | 'template_fallback' | 'error_fallback';
+    warning?: string;
+}> {
     const query = providerId?.trim()
         ? `?providerId=${encodeURIComponent(providerId.trim())}`
         : '';
     return request(`/api/v1/llm/models${query}`);
+}
+
+export function previewLlmModels(
+    body: LlmModelPreviewRequest,
+    options?: { signal?: AbortSignal },
+): Promise<LlmModelPreviewResponse> {
+    return request('/api/v1/llm/models/preview', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        signal: options?.signal,
+    });
+}
+
+export interface ProviderSecretStatus {
+    providerId: string;
+    hasSecret?: boolean;
+    hasApiKey?: boolean;
+    source: 'none' | 'keychain' | 'env' | 'inline';
+    apiKeySource?: 'none' | 'keychain' | 'env' | 'inline';
+    apiKeyRef?: string;
+}
+
+export function fetchProviderSecretStatus(
+    providerId: string,
+    options?: { signal?: AbortSignal },
+): Promise<ProviderSecretStatus> {
+    return request(`/api/v1/secrets/providers/${encodeURIComponent(providerId)}/status`, {
+        signal: options?.signal,
+    });
+}
+
+export function saveProviderSecret(providerId: string, apiKey: string): Promise<ProviderSecretStatus> {
+    return request(`/api/v1/secrets/providers/${encodeURIComponent(providerId)}`, {
+        method: 'POST',
+        body: JSON.stringify({ apiKey }),
+    });
+}
+
+export function deleteProviderSecret(providerId: string): Promise<ProviderSecretStatus> {
+    return request(`/api/v1/secrets/providers/${encodeURIComponent(providerId)}`, {
+        method: 'DELETE',
+        body: '{}',
+    });
+}
+
+export interface OpenAICodexOAuthStatus {
+    providerId: 'openai-codex';
+    available: boolean;
+    connected: boolean;
+    accountLabel?: string;
+    expiresAt?: string;
+    requiresReauth?: boolean;
+}
+
+export interface OpenAICodexDeviceStartResponse {
+    flowId: string;
+    providerId: 'openai-codex';
+    verificationUrl: string;
+    userCode?: string;
+    expiresAt: string;
+    pollAfterMs: number;
+}
+
+export interface OpenAICodexDevicePollResponse {
+    flowId: string;
+    providerId: 'openai-codex';
+    status: 'pending' | 'connected' | 'expired' | 'failed';
+    retryAfterMs?: number;
+    accountLabel?: string;
+    expiresAt?: string;
+    requiresReauth?: boolean;
+    error?: string;
+}
+
+export function fetchOpenAICodexOAuthStatus(): Promise<OpenAICodexOAuthStatus> {
+    return request('/api/v1/llm/providers/openai-codex/oauth/status');
+}
+
+export function startOpenAICodexOAuthDeviceFlow(): Promise<OpenAICodexDeviceStartResponse> {
+    return request('/api/v1/llm/providers/openai-codex/oauth/device/start', {
+        method: 'POST',
+        body: '{}',
+    });
+}
+
+export function pollOpenAICodexOAuthDeviceFlow(flowId: string): Promise<OpenAICodexDevicePollResponse> {
+    return request('/api/v1/llm/providers/openai-codex/oauth/device/poll', {
+        method: 'POST',
+        body: JSON.stringify({ flowId }),
+    });
+}
+
+export function deleteOpenAICodexOAuthCredential(): Promise<OpenAICodexOAuthStatus> {
+    return request('/api/v1/llm/providers/openai-codex/oauth', {
+        method: 'DELETE',
+        body: '{}',
+    });
 }
 
 // ─── Gateway Access / Pairing ───────────────────
@@ -1292,7 +1809,8 @@ export async function preflightGatewayAccess(): Promise<GatewayAccessPreflightRe
         };
     }
 
-    const authProbe = await runGatewayProbe(GATEWAY_AUTH_PROBE_PATH, 'Auth probe', true, 'auth');
+    const authProbePath = companionSession ? GATEWAY_COMPANION_AUTH_PROBE_PATH : GATEWAY_OPERATOR_AUTH_PROBE_PATH;
+    const authProbe = await runGatewayProbe(authProbePath, 'Auth probe', true, 'auth');
     checks.push(authProbe.check);
 
     if (authProbe.check.status === 'success') {
@@ -1374,6 +1892,75 @@ export function disconnectMcpServer(serverId: string): Promise<void> {
 // ─── Cron / Scheduled Jobs ──────────────────────
 export function fetchCronJobs(): Promise<{ items: CronJobRecord[] }> {
     return request('/api/v1/cron/jobs');
+}
+
+// ─── Mission Control Next parity summaries ───────────────────
+export function fetchWorkspaces(view: 'active' | 'archived' | 'all' = 'active', limit = 200): Promise<{ items: WorkspaceRecord[] }> {
+    const params = new URLSearchParams({ view, limit: String(Math.max(1, Math.min(limit, 500))) });
+    return request(`/api/v1/workspaces?${params.toString()}`);
+}
+
+export function fetchChatProjects(
+    view: 'active' | 'archived' | 'all' = 'active',
+    limit = 300,
+    workspaceId?: string,
+): Promise<{ items: ChatProjectRecord[] }> {
+    const params = new URLSearchParams({ view, limit: String(Math.max(1, Math.min(limit, 500))) });
+    if (workspaceId?.trim()) {
+        params.set('workspaceId', workspaceId.trim());
+    }
+    return request(`/api/v1/chat/projects?${params.toString()}`);
+}
+
+export function fetchMemoryFiles(dir = 'memory'): Promise<{ items: MemoryFileRecord[] }> {
+    return request(`/api/v1/memory/files?dir=${encodeURIComponent(dir)}`);
+}
+
+export function fetchMemoryItems(input?: {
+    namespace?: string;
+    status?: 'active' | 'forgotten' | 'all';
+    query?: string;
+    limit?: number;
+}): Promise<{ items: MemoryItemRecord[] }> {
+    const params = new URLSearchParams();
+    if (input?.namespace) params.set('namespace', input.namespace);
+    if (input?.status) params.set('status', input.status);
+    if (input?.query) params.set('query', input.query);
+    params.set('limit', String(Math.max(1, Math.min(input?.limit ?? 100, 500))));
+    return request(`/api/v1/memory/items?${params.toString()}`);
+}
+
+export function fetchFilesList(dir = '.', limit = 120): Promise<{ items: FileListRecord[] }> {
+    return request(`/api/v1/files/list?dir=${encodeURIComponent(dir)}&limit=${Math.max(1, Math.min(limit, 500))}`);
+}
+
+export function fetchChatGeneratedArtifacts(input?: {
+    sessionId?: string;
+    workspaceId?: string;
+    sourceSurface?: string;
+    kind?: string;
+    limit?: number;
+}): Promise<{ items: GeneratedArtifactRecord[] }> {
+    const params = new URLSearchParams();
+    if (input?.sessionId) params.set('sessionId', input.sessionId);
+    if (input?.workspaceId) params.set('workspaceId', input.workspaceId);
+    if (input?.sourceSurface) params.set('sourceSurface', input.sourceSurface);
+    if (input?.kind) params.set('kind', input.kind);
+    params.set('limit', String(Math.max(1, Math.min(input?.limit ?? 120, 500))));
+    return request(`/api/v1/chat/generated-artifacts?${params.toString()}`);
+}
+
+export function fetchToolCatalog(): Promise<{ items: ToolCatalogEntry[] }> {
+    return request('/api/v1/tools/catalog');
+}
+
+export function fetchInstalledAddons(): Promise<{ items: AddonInstalledRecord[] }> {
+    return request('/api/v1/addons/installed');
+}
+
+export function fetchIntegrationConnections(kind?: string): Promise<{ items: IntegrationConnectionRecord[] }> {
+    const suffix = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+    return request(`/api/v1/integrations/connections${suffix}`);
 }
 
 // ─── Skills (write) ────────────────────────────

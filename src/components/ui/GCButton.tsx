@@ -72,9 +72,9 @@ const styles = StyleSheet.create({
 });
 
 const sizeStyles: Record<string, ViewStyle> = {
-    sm: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, minHeight: 36 },
-    md: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, minHeight: 44 },
-    lg: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md, minHeight: 48 },
+    sm: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, minHeight: 32 },
+    md: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 38 },
+    lg: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 44 },
 };
 
 const textSizeStyles: Record<string, TextStyle> = {
@@ -84,14 +84,14 @@ const textSizeStyles: Record<string, TextStyle> = {
 };
 
 const variantStyles: Record<string, ViewStyle> = {
-    primary: { backgroundColor: 'rgba(84, 221, 255, 0.15)', borderColor: colors.borderStrong },
-    secondary: { backgroundColor: colors.bgCard, borderColor: colors.borderCyan },
+    primary: { backgroundColor: '#f4ead6', borderColor: '#f4ead6' },
+    secondary: { backgroundColor: colors.bgCard, borderColor: colors.borderDefault },
     danger: { backgroundColor: colors.crimsonMuted, borderColor: 'rgba(255, 86, 120, 0.34)' },
     ghost: { backgroundColor: 'transparent', borderColor: 'transparent' },
 };
 
 const variantTextStyles: Record<string, TextStyle> = {
-    primary: { color: colors.cyan },
+    primary: { color: '#10141a' },
     secondary: { color: colors.textPrimary },
     danger: { color: '#ffd7df' },
     ghost: { color: colors.textMuted },

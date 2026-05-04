@@ -1,51 +1,59 @@
 /**
- * GoatCitadel Mobile — Signal Noir Design Tokens
- * Ported from the desktop Signal Noir CSS theme.
+ * GoatCitadel Mobile — Mission Control Next aligned design tokens.
  */
 
 export const colors = {
     // Core backgrounds
-    bgCore: '#06080d',
-    bgShell: '#090d14',
-    bgSidebar: '#0a1017',
-    bgPanel: 'rgba(13, 19, 28, 0.92)',
-    bgPanelElevated: 'rgba(17, 24, 35, 0.96)',
-    bgPanelSolid: '#0d1320',
-    bgPanelElevatedSolid: '#111824',
-    bgInset: '#080b12',
-    bgCard: '#0e141e',
-    bgCardElevated: '#111927',
-    bgInput: '#0a0f18',
+    bgCore: '#14181d',
+    bgShell: '#181d24',
+    bgSidebar: '#10141a',
+    bgPanel: '#181d24',
+    bgPanelElevated: '#222833',
+    bgPanelSolid: '#181d24',
+    bgPanelElevatedSolid: '#222833',
+    bgInset: '#151a21',
+    bgCard: '#1b2027',
+    bgCardElevated: '#222833',
+    bgInput: '#181d24',
 
     // Borders
-    borderQuiet: 'rgba(62, 81, 101, 0.24)',
-    borderDefault: 'rgba(89, 116, 139, 0.26)',
-    borderStrong: 'rgba(91, 200, 224, 0.34)',
-    borderLive: 'rgba(84, 221, 255, 0.54)',
-    borderCyan: 'rgba(92, 198, 223, 0.18)',
+    borderQuiet: 'rgba(255, 255, 255, 0.08)',
+    borderDefault: 'rgba(255, 255, 255, 0.10)',
+    borderStrong: 'rgba(244, 234, 214, 0.22)',
+    borderLive: 'rgba(144, 196, 232, 0.34)',
+    borderCyan: 'rgba(255, 255, 255, 0.10)',
 
     // Text
-    textPrimary: '#f0f6fb',
-    textSecondary: '#b6c3d1',
-    textMuted: '#7e8ea1',
-    textDim: '#5e6b7c',
+    textPrimary: '#f4f1ea',
+    textSecondary: '#c9c6bd',
+    textMuted: '#898f99',
+    textDim: '#676f7a',
 
     // Accents
-    cyan: '#54ddff',
-    cyanMuted: 'rgba(84, 221, 255, 0.18)',
-    cyanGlow: 'rgba(84, 221, 255, 0.12)',
-    ember: '#ff9a45',
-    emberMuted: 'rgba(255, 154, 69, 0.18)',
-    crimson: '#ff5678',
-    crimsonMuted: 'rgba(255, 86, 120, 0.18)',
-    success: '#6ef5a5',
-    successMuted: 'rgba(110, 245, 165, 0.18)',
+    cyan: '#90c4e8',
+    cyanMuted: 'rgba(144, 196, 232, 0.14)',
+    cyanGlow: 'rgba(144, 196, 232, 0.08)',
+    ember: '#e5c46f',
+    emberMuted: 'rgba(229, 196, 111, 0.14)',
+    crimson: '#e47766',
+    crimsonMuted: 'rgba(228, 119, 102, 0.14)',
+    success: '#74d6a6',
+    successMuted: 'rgba(116, 214, 166, 0.14)',
+
+    // Mission Control Next area colors
+    areaChat: '#90c4e8',
+    areaCowork: '#d59bd4',
+    areaCode: '#77d5b2',
+    areaProjects: '#76cfe7',
+    areaLibrary: '#9fb9ef',
+    areaOps: '#9db5d1',
+    areaSettings: '#e2ca7d',
 
     // Semantic
-    riskSafe: '#6ef5a5',
-    riskCaution: '#ff9a45',
-    riskDanger: '#ff5678',
-    riskNuclear: '#ff2d55',
+    riskSafe: '#74d6a6',
+    riskCaution: '#e5c46f',
+    riskDanger: '#e47766',
+    riskNuclear: '#d867a5',
 
     // Status chip backgrounds
     statusLiveBg: 'rgba(84, 221, 255, 0.12)',
@@ -55,10 +63,10 @@ export const colors = {
     statusMutedBg: 'rgba(111, 130, 150, 0.12)',
 
     // Tab bar
-    tabBarBg: '#070a10',
-    tabBarBorder: 'rgba(92, 198, 223, 0.12)',
-    tabActive: '#54ddff',
-    tabInactive: '#5e6b7c',
+    tabBarBg: '#10141a',
+    tabBarBorder: 'rgba(255, 255, 255, 0.08)',
+    tabActive: '#f4ead6',
+    tabInactive: '#898f99',
 } as const;
 
 export const spacing = {
@@ -72,41 +80,45 @@ export const spacing = {
 } as const;
 
 export const radii = {
-    sm: 6,
-    md: 10,
-    lg: 14,
-    xl: 20,
+    sm: 5,
+    md: 8,
+    lg: 12,
+    xl: 16,
     pill: 999,
 } as const;
 
 export const typography = {
-    displayFont: 'Rajdhani_600SemiBold',
+    displayFont: 'System',
     bodyFont: 'System',
 
     displayLg: {
-        fontFamily: 'Rajdhani_600SemiBold',
-        fontSize: 28,
-        lineHeight: 32,
-        letterSpacing: 0.8,
+        fontFamily: 'System',
+        fontSize: 24,
+        lineHeight: 29,
+        letterSpacing: 0,
+        fontWeight: '700' as const,
     },
     displayMd: {
-        fontFamily: 'Rajdhani_600SemiBold',
-        fontSize: 22,
+        fontFamily: 'System',
+        fontSize: 20,
         lineHeight: 26,
-        letterSpacing: 0.6,
+        letterSpacing: 0,
+        fontWeight: '700' as const,
     },
     displaySm: {
-        fontFamily: 'Rajdhani_600SemiBold',
+        fontFamily: 'System',
         fontSize: 16,
         lineHeight: 20,
-        letterSpacing: 0.5,
+        letterSpacing: 0,
+        fontWeight: '700' as const,
     },
     eyebrow: {
-        fontFamily: 'Rajdhani_600SemiBold',
+        fontFamily: 'System',
         fontSize: 11,
         lineHeight: 14,
-        letterSpacing: 1.5,
+        letterSpacing: 0.8,
         textTransform: 'uppercase' as const,
+        fontWeight: '700' as const,
     },
     bodyLg: {
         fontSize: 16,

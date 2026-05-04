@@ -11,9 +11,18 @@ interface Props {
     style?: ViewStyle;
     elevated?: boolean;
     variant?: 'default' | 'warning' | 'critical';
+    accentColor?: string;
+    accent?: boolean;
 }
 
-export function GCCard({ children, style, elevated, variant = 'default' }: Props) {
+export function GCCard({
+    children,
+    style,
+    elevated,
+    variant = 'default',
+    accentColor = colors.cyan,
+    accent = false,
+}: Props) {
     return (
         <View
             style={[
@@ -24,7 +33,16 @@ export function GCCard({ children, style, elevated, variant = 'default' }: Props
                 style,
             ]}
         >
-            <View style={[styles.accentLine, variant === 'warning' && styles.accentWarning, variant === 'critical' && styles.accentCritical]} />
+            {accent || variant !== 'default' ? (
+                <View
+                    style={[
+                        styles.accentLine,
+                        { backgroundColor: accentColor },
+                        variant === 'warning' && styles.accentWarning,
+                        variant === 'critical' && styles.accentCritical,
+                    ]}
+                />
+            ) : null}
             {children}
         </View>
     );
@@ -35,8 +53,8 @@ const styles = StyleSheet.create({
         backgroundColor: colors.bgCard,
         borderRadius: radii.md,
         borderWidth: 1,
-        borderColor: colors.borderCyan,
-        padding: spacing.lg,
+        borderColor: colors.borderDefault,
+        padding: spacing.md,
         overflow: 'hidden',
     },
     elevated: {
@@ -53,10 +71,10 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         left: 0,
-        width: '42%',
+        width: '34%',
         height: 2,
         backgroundColor: colors.cyan,
-        opacity: 0.7,
+        opacity: 0.78,
     },
     accentWarning: {
         backgroundColor: colors.ember,

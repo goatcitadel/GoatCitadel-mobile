@@ -14,9 +14,10 @@ interface Props {
     subtitle?: string;
     right?: React.ReactNode;
     style?: ViewStyle;
+    accentColor?: string;
 }
 
-export function GCHeader({ eyebrow, title, subtitle, right, style }: Props) {
+export function GCHeader({ eyebrow, title, subtitle, right, style, accentColor = colors.cyan }: Props) {
     const insets = useSafeAreaInsets();
     const layout = useLayout();
     const topPad = Math.max(insets.top, spacing.xl);
@@ -34,7 +35,7 @@ export function GCHeader({ eyebrow, title, subtitle, right, style }: Props) {
             ]}
         >
             <View style={styles.main}>
-                {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+                {eyebrow ? <Text style={[styles.eyebrow, { color: accentColor }]}>{eyebrow}</Text> : null}
                 <Text style={[styles.title, layout.isTablet && styles.titleTablet]}>{title}</Text>
                 {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
             </View>
@@ -48,6 +49,9 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.borderQuiet,
+        backgroundColor: colors.bgCore,
     },
     main: {
         flex: 1,
@@ -61,7 +65,6 @@ const styles = StyleSheet.create({
     title: {
         ...typography.displayLg,
         color: colors.textPrimary,
-        textTransform: 'uppercase',
     },
     titleTablet: {
         fontSize: 30,
